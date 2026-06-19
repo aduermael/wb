@@ -47,7 +47,7 @@ Example Domain
 
 ## Output
 
-`wp` keeps structured CLI JSON compact by default. JSON is emitted on one line and omits fields that do not add information: `null`, `false`, empty strings, empty arrays, and empty objects. Raw `eval`, `js`, `text`, and `html` results are printed as returned strings.
+`wp` keeps structured CLI JSON compact by default. JSON is emitted on one line and omits fields that do not add information: `null`, `false`, empty strings, empty arrays, and empty objects. Raw `eval`, `text`, and `html` results are printed as returned strings.
 
 Commands avoid returning a full page snapshot unless explicitly asked. Use `wp open <url>` for a short summary containing the browser ID, title, URL, loading/progress, and action count. Use `wp open --full <url>` or `wp -b <id> page` when you need visible text and the full action list. Full snapshots still use compact JSON pruning.
 
@@ -67,8 +67,7 @@ Browser IDs are random 8-character lowercase hex strings. Page snapshot text is 
 - `wp -b <id> click <n>`: click an action from the latest page/action list and print a compact summary.
 - `wp -b <id> fill <n> <text>`: set the value of an input, textarea, select, or contenteditable element and print a compact summary.
 - `wp -b <id> submit <n>`: submit the nearest form for an action and print a compact summary.
-- `wp -b <id> eval <expression>`: evaluate a JavaScript expression and print the result.
-- `wp -b <id> js <function-body>`: run a raw `WebPage.callJavaScript` function body.
+- `wp -b <id> eval [--body] <javascript>`: evaluate a JavaScript expression, or run a raw `WebPage.callJavaScript` function body with `--body`, and print the result.
 - `wp -b <id> text [selector]`: print visible text for the page or CSS selector.
 - `wp -b <id> html [selector]`: print HTML for the page or CSS selector.
 - `wp daemon start [--idle-timeout <seconds|off>]`: start the daemon and optionally set its idle shutdown timeout.

@@ -143,17 +143,15 @@ struct CLIParser {
             )
 
         case "eval":
-            let script = try arguments.joinRemaining("usage: wp -b <id> eval <javascript-expression>")
+            let functionBody = arguments.removeFlag("--body")
+            let script = try arguments.joinRemaining("usage: wp -b <id> eval [--body] <javascript>")
             return CLIInvocation(
-                request: WireRequest(command: .eval, browser: browser, script: script),
-                renderMode: .value,
-                startDaemon: true
-            )
-
-        case "js":
-            let script = try arguments.joinRemaining("usage: wp -b <id> js <javascript-function-body>")
-            return CLIInvocation(
-                request: WireRequest(command: .js, browser: browser, script: script),
+                request: WireRequest(
+                    command: .eval,
+                    browser: browser,
+                    script: script,
+                    functionBody: functionBody ? true : nil
+                ),
                 renderMode: .value,
                 startDaemon: true
             )
@@ -348,8 +346,7 @@ func printUsage() {
       wp -b <id> click <action-number>
       wp -b <id> fill <action-number> <text>
       wp -b <id> submit <action-number>
-      wp -b <id> eval <javascript-expression>
-      wp -b <id> js <javascript-function-body>
+      wp -b <id> eval [--body] <javascript>
       wp -b <id> text [css-selector]
       wp -b <id> html [css-selector]
 

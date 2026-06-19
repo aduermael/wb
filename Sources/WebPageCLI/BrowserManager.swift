@@ -107,13 +107,12 @@ final class BrowserManager: @unchecked Sendable {
         case .eval:
             let browser = try await requireBrowser(request.browser)
             let script = try request.requiredScript()
-            let value = try await browser.evaluateExpression(script)
-            return .success(browser: browser.id, value: value)
-
-        case .js:
-            let browser = try await requireBrowser(request.browser)
-            let script = try request.requiredScript()
-            let value = try await browser.callFunctionBody(script)
+            let value: String
+            if request.functionBody == true {
+                value = try await browser.callFunctionBody(script)
+            } else {
+                value = try await browser.evaluateExpression(script)
+            }
             return .success(browser: browser.id, value: value)
 
         case .text:

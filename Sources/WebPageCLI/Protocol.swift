@@ -13,7 +13,6 @@ enum WireCommand: String, Codable, Equatable, Sendable {
     case fill
     case submit
     case eval
-    case js
     case text
     case html
     case daemonStop
@@ -24,6 +23,7 @@ struct WireRequest: Codable, Sendable {
     var browser: String?
     var url: String?
     var script: String?
+    var functionBody: Bool?
     var index: Int?
     var value: String?
     var selector: String?
@@ -33,6 +33,7 @@ struct WireRequest: Codable, Sendable {
         browser: String? = nil,
         url: String? = nil,
         script: String? = nil,
+        functionBody: Bool? = nil,
         index: Int? = nil,
         value: String? = nil,
         selector: String? = nil
@@ -41,6 +42,7 @@ struct WireRequest: Codable, Sendable {
         self.browser = browser
         self.url = url
         self.script = script
+        self.functionBody = functionBody
         self.index = index
         self.value = value
         self.selector = selector
