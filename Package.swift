@@ -8,7 +8,7 @@ let package = Package(
         .macOS(.v26)
     ],
     products: [
-        .executable(name: "webpage-cli", targets: ["WebPageCLI"])
+        .executable(name: "wp", targets: ["WebPageCLI"])
     ],
     targets: [
         .executableTarget(name: "WebPageCLI")
