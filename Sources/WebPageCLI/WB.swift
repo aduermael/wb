@@ -2,10 +2,10 @@ import Foundation
 import Darwin
 
 @main
-private struct WP {
+private struct WB {
     static func main() async {
         guard #available(macOS 26.0, *) else {
-            printError("wp requires macOS 26.0 or newer.")
+            printError("wb requires macOS 26.0 or newer.")
             Darwin.exit(1)
         }
 
@@ -34,11 +34,8 @@ private struct WP {
         let invocation = try CLIParser.parse(arguments)
 
         switch invocation.renderMode {
-        case .help:
-            printUsage()
-
-        case .pageHelp:
-            printPageUsage()
+        case .help(let topic):
+            printHelp(topic)
 
         case .daemonStatus:
             let client = DaemonClient()

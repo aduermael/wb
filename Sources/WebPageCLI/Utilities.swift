@@ -1,10 +1,10 @@
 import Foundation
 import Darwin
 
-enum WPError: LocalizedError {
+enum WBError: LocalizedError {
     case message(String)
 
-    static func posix(_ operation: String) -> WPError {
+    static func posix(_ operation: String) -> WBError {
         .message("\(operation): \(String(cString: strerror(errno)))")
     }
 
@@ -19,7 +19,7 @@ enum WPError: LocalizedError {
 extension Optional {
     func unwrap(_ message: String) throws -> Wrapped {
         guard let value = self else {
-            throw WPError.message(message)
+            throw WBError.message(message)
         }
         return value
     }
@@ -189,7 +189,7 @@ private func renderJSONObject(_ value: Any, key: String? = nil) throws -> String
 private func renderJSONString(_ value: String) throws -> String {
     let data = try JSONSerialization.data(withJSONObject: [value])
     guard let rendered = String(data: data, encoding: .utf8) else {
-        throw WPError.message("failed to render JSON string")
+        throw WBError.message("failed to render JSON string")
     }
     return String(rendered.dropFirst().dropLast())
 }

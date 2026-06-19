@@ -9,7 +9,7 @@ final class BrowserManager: @unchecked Sendable {
     private let sessionStore: SessionStore
     private var browsers: [String: BrowserInstance] = [:]
 
-    init(config: WPConfig = .current()) {
+    init(config: WBConfig = .current()) {
         sessionStore = SessionStore(directory: config.sessionsDirectory)
     }
 
@@ -44,7 +44,7 @@ final class BrowserManager: @unchecked Sendable {
             }
 
             guard removedActive || removedDump else {
-                throw WPError.message("unknown browser \(id)")
+                throw WBError.message("unknown browser \(id)")
             }
             return .success(browser: id, message: "closed")
 
@@ -56,15 +56,10 @@ final class BrowserManager: @unchecked Sendable {
             }
 
             guard sessionStore.exists(id) else {
-                throw WPError.message("unknown browser \(id)")
+                throw WBError.message("unknown browser \(id)")
             }
             _ = try sessionStore.load(id)
             return .success(browser: id, message: "already dumped")
-
-        case .browserResume:
-            let browser = try await requireBrowser(request.browser)
-            let page = try await browser.snapshot()
-            return .success(browser: browser.id, page: page, message: "resumed")
 
         case .open:
             let url = try request.requiredURL()
@@ -87,21 +82,21 @@ final class BrowserManager: @unchecked Sendable {
 
         case .click:
             let browser = try await requireBrowser(request.browser)
-            let index = try request.requiredIndex()
-            let result = try await browser.click(index)
+            let action = try request.requiredAction()
+            let result = try await browser.click(action)
             return .success(browser: browser.id, page: result.page, message: result.message)
 
         case .fill:
             let browser = try await requireBrowser(request.browser)
-            let index = try request.requiredIndex()
+            let action = try request.requiredAction()
             let value = try request.requiredValue()
-            let result = try await browser.fill(index, value: value)
+            let result = try await browser.fill(action, value: value)
             return .success(browser: browser.id, page: result.page, message: result.message)
 
         case .submit:
             let browser = try await requireBrowser(request.browser)
-            let index = try request.requiredIndex()
-            let result = try await browser.submit(index)
+            let action = try request.requiredAction()
+            let result = try await browser.submit(action)
             return .success(browser: browser.id, page: result.page, message: result.message)
 
         case .eval:
@@ -114,16 +109,6 @@ final class BrowserManager: @unchecked Sendable {
                 value = try await browser.evaluateExpression(script)
             }
             return .success(browser: browser.id, value: value)
-
-        case .text:
-            let browser = try await requireBrowser(request.browser)
-            let text = try await browser.text(selector: request.selector)
-            return .success(browser: browser.id, text: text)
-
-        case .html:
-            let browser = try await requireBrowser(request.browser)
-            let html = try await browser.html(selector: request.selector)
-            return .success(browser: browser.id, html: html)
 
         case .daemonStop:
             try await dumpAllSessions()
@@ -175,7 +160,7 @@ final class BrowserManager: @unchecked Sendable {
         }
 
         guard sessionStore.exists(id) else {
-            throw WPError.message("unknown browser \(id)")
+            throw WBError.message("unknown browser \(id)")
         }
 
         let dump = try sessionStore.load(id)
@@ -188,7 +173,7 @@ final class BrowserManager: @unchecked Sendable {
     }
 
     private func requireBrowser(_ id: String?) async throws -> BrowserInstance {
-        let id = try id.nilIfEmpty.unwrap("missing browser id; pass --browser <id> or -b <id>")
+        let id = try id.nilIfEmpty.unwrap("missing browser id")
         return try await requireBrowser(id)
     }
 
@@ -198,7 +183,7 @@ final class BrowserManager: @unchecked Sendable {
         }
 
         guard sessionStore.exists(id) else {
-            throw WPError.message("unknown browser \(id)")
+            throw WBError.message("unknown browser \(id)")
         }
 
         let dump = try sessionStore.load(id)
@@ -302,9 +287,9 @@ private final class BrowserInstance {
         )
     }
 
-    func click(_ index: Int) async throws -> InteractionResult {
+    func click(_ actionReference: String) async throws -> InteractionResult {
         try await ensureActions()
-        let action = try action(at: index)
+        let action = try action(matching: actionReference)
         let previousURL = page.url
         let message = try await callString(Self.clickScript, arguments: ["id": action.id])
 
@@ -316,9 +301,9 @@ private final class BrowserInstance {
         return InteractionResult(message: message, page: try await snapshot())
     }
 
-    func fill(_ index: Int, value: String) async throws -> InteractionResult {
+    func fill(_ actionReference: String, value: String) async throws -> InteractionResult {
         try await ensureActions()
-        let action = try action(at: index)
+        let action = try action(matching: actionReference)
         let message = try await callString(
             Self.fillScript,
             arguments: ["id": action.id, "value": value]
@@ -327,9 +312,9 @@ private final class BrowserInstance {
         return InteractionResult(message: message, page: try await snapshot())
     }
 
-    func submit(_ index: Int) async throws -> InteractionResult {
+    func submit(_ actionReference: String) async throws -> InteractionResult {
         try await ensureActions()
-        let action = try action(at: index)
+        let action = try action(matching: actionReference)
         let previousURL = page.url
         let message = try await callString(Self.submitScript, arguments: ["id": action.id])
 
@@ -348,20 +333,6 @@ private final class BrowserInstance {
     func callFunctionBody(_ functionBody: String) async throws -> String {
         let value = try await page.callJavaScript(functionBody)
         return printable(value)
-    }
-
-    func text(selector: String?, maxLength: Int = 12000) async throws -> String {
-        try await callString(
-            Self.textScript,
-            arguments: ["selector": selector as Any, "maxLength": maxLength]
-        )
-    }
-
-    func html(selector: String?, maxLength: Int = 12000) async throws -> String {
-        try await callString(
-            Self.htmlScript,
-            arguments: ["selector": selector as Any, "maxLength": maxLength]
-        )
     }
 
     func markdownText(maxLength: Int = 12000) async throws -> String {
@@ -431,9 +402,14 @@ private final class BrowserInstance {
         return actions
     }
 
-    private func action(at index: Int) throws -> BrowserAction {
-        guard let action = actions.first(where: { $0.index == index }) else {
-            throw WPError.message("unknown action \(index); run 'wp -b \(id) page' again")
+    private func action(matching reference: String) throws -> BrowserAction {
+        if let index = Int(reference),
+           let action = actions.first(where: { $0.index == index }) {
+            return action
+        }
+
+        guard let action = actions.first(where: { $0.id == reference }) else {
+            throw WBError.message("unknown action \(reference); run 'wb page \(id)' again")
         }
         return action
     }
@@ -641,21 +617,6 @@ private final class BrowserInstance {
       form.submit();
     }
     return "submitted form";
-    """
-
-    private static let textScript = """
-    const root = selector ? document.querySelector(selector) : document.body;
-    if (!root) return "";
-    const text = (root.innerText || root.textContent || "")
-      .replace(/\\n{3,}/g, "\\n\\n")
-      .trim();
-    return text.slice(0, maxLength);
-    """
-
-    private static let htmlScript = """
-    const root = selector ? document.querySelector(selector) : document.documentElement;
-    if (!root) return "";
-    return root.outerHTML.slice(0, maxLength);
     """
 
     private static let pageStatsScript = """

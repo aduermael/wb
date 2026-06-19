@@ -1,7 +1,7 @@
 import Foundation
 import Darwin
 
-struct WPConfig: Sendable {
+struct WBConfig: Sendable {
     static let defaultIdleTimeout: TimeInterval = 180
 
     let directory: URL
@@ -12,16 +12,17 @@ struct WPConfig: Sendable {
     }
 
     var socketPath: String {
-        if let override = ProcessInfo.processInfo.environment["WP_SOCKET"].nilIfEmpty {
+        let environment = ProcessInfo.processInfo.environment
+        if let override = environment["WB_SOCKET"].nilIfEmpty ?? environment["WP_SOCKET"].nilIfEmpty {
             return override
         }
 
-        return "/tmp/wp-webpage-\(Darwin.getuid())-\(Self.pathHash(directory.path)).sock"
+        return "/tmp/wb-webpage-\(Darwin.getuid())-\(Self.pathHash(directory.path)).sock"
     }
 
-    static func current(idleTimeout: TimeInterval? = nil) -> WPConfig {
+    static func current(idleTimeout: TimeInterval? = nil) -> WBConfig {
         let environment = ProcessInfo.processInfo.environment
-        let rawDirectory = environment["WP_DIR"].nilIfEmpty ?? "wp"
+        let rawDirectory = environment["WB_DIR"].nilIfEmpty ?? environment["WP_DIR"].nilIfEmpty ?? "wb"
         let baseURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
         let directory: URL
         if rawDirectory.hasPrefix("/") {
@@ -30,9 +31,12 @@ struct WPConfig: Sendable {
             directory = baseURL.appendingPathComponent(rawDirectory, isDirectory: true)
         }
 
-        return WPConfig(
+        return WBConfig(
             directory: directory.standardizedFileURL,
-            idleTimeout: idleTimeout ?? parseIdleTimeout(environment["WP_IDLE_SECONDS"]) ?? defaultIdleTimeout
+            idleTimeout: idleTimeout
+                ?? parseIdleTimeout(environment["WB_IDLE_SECONDS"])
+                ?? parseIdleTimeout(environment["WP_IDLE_SECONDS"])
+                ?? defaultIdleTimeout
         )
     }
 
@@ -116,11 +120,11 @@ struct SessionStore: Sendable {
         let data = try Data(contentsOf: url)
         let dump = try JSONDecoder().decode(BrowserDump.self, from: data)
         guard Self.isValidBrowserID(dump.browser) else {
-            throw WPError.message("invalid browser id \(dump.browser)")
+            throw WBError.message("invalid browser id \(dump.browser)")
         }
         let fileBrowser = url.deletingPathExtension().lastPathComponent
         guard dump.browser == fileBrowser else {
-            throw WPError.message("browser id mismatch in session \(fileBrowser)")
+            throw WBError.message("browser id mismatch in session \(fileBrowser)")
         }
         return dump
     }
@@ -138,7 +142,7 @@ struct SessionStore: Sendable {
 
     private func fileURL(for browser: String) throws -> URL {
         guard Self.isValidBrowserID(browser) else {
-            throw WPError.message("invalid browser id \(browser)")
+            throw WBError.message("invalid browser id \(browser)")
         }
         return directory.appendingPathComponent(browser).appendingPathExtension("json")
     }

@@ -6,15 +6,12 @@ enum WireCommand: String, Codable, Equatable, Sendable {
     case browserList
     case browserClose
     case browserDump
-    case browserResume
     case open
     case page
     case click
     case fill
     case submit
     case eval
-    case text
-    case html
     case daemonStop
 }
 
@@ -24,9 +21,9 @@ struct WireRequest: Codable, Sendable {
     var url: String?
     var script: String?
     var functionBody: Bool?
+    var action: String?
     var index: Int?
     var value: String?
-    var selector: String?
 
     init(
         command: WireCommand,
@@ -34,18 +31,18 @@ struct WireRequest: Codable, Sendable {
         url: String? = nil,
         script: String? = nil,
         functionBody: Bool? = nil,
+        action: String? = nil,
         index: Int? = nil,
-        value: String? = nil,
-        selector: String? = nil
+        value: String? = nil
     ) {
         self.command = command
         self.browser = browser
         self.url = url
         self.script = script
         self.functionBody = functionBody
+        self.action = action
         self.index = index
         self.value = value
-        self.selector = selector
     }
 
     func requiredBrowserID() throws -> String {
@@ -56,7 +53,7 @@ struct WireRequest: Codable, Sendable {
         let rawURL = try url.nilIfEmpty.unwrap("missing URL")
         let normalized = rawURL.contains("://") ? rawURL : "https://\(rawURL)"
         guard let url = URL(string: normalized) else {
-            throw WPError.message("invalid URL: \(rawURL)")
+            throw WBError.message("invalid URL: \(rawURL)")
         }
         return url
     }
@@ -65,8 +62,14 @@ struct WireRequest: Codable, Sendable {
         try script.nilIfEmpty.unwrap("missing JavaScript")
     }
 
-    func requiredIndex() throws -> Int {
-        try index.unwrap("missing action number")
+    func requiredAction() throws -> String {
+        if let action = action.nilIfEmpty {
+            return action
+        }
+        if let index {
+            return String(index)
+        }
+        throw WBError.message("missing action number or ID")
     }
 
     func requiredValue() throws -> String {
@@ -80,8 +83,6 @@ struct WireResponse: Codable, Sendable {
     var browsers: [BrowserSummary]?
     var page: PageSnapshot?
     var value: String?
-    var text: String?
-    var html: String?
     var message: String?
     var error: String?
 
@@ -90,8 +91,6 @@ struct WireResponse: Codable, Sendable {
         browsers: [BrowserSummary]? = nil,
         page: PageSnapshot? = nil,
         value: String? = nil,
-        text: String? = nil,
-        html: String? = nil,
         message: String? = nil
     ) -> WireResponse {
         WireResponse(
@@ -100,8 +99,6 @@ struct WireResponse: Codable, Sendable {
             browsers: browsers,
             page: page,
             value: value,
-            text: text,
-            html: html,
             message: message,
             error: nil
         )
@@ -114,8 +111,6 @@ struct WireResponse: Codable, Sendable {
             browsers: nil,
             page: nil,
             value: nil,
-            text: nil,
-            html: nil,
             message: nil,
             error: message
         )

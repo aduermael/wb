@@ -4,10 +4,10 @@ import Darwin
 @available(macOS 26.0, *)
 final class DaemonProcess {
     private let socketPath: String
-    private let config: WPConfig
+    private let config: WBConfig
     private var server: UnixSocketServer?
 
-    init(config: WPConfig = .current()) {
+    init(config: WBConfig = .current()) {
         self.config = config
         socketPath = config.socketPath
     }
@@ -76,7 +76,7 @@ private final class DaemonActivity: @unchecked Sendable {
 
 final class DaemonClient {
     static var defaultSocketPath: String {
-        WPConfig.current().socketPath
+        WBConfig.current().socketPath
     }
 
     private let socketPath: String
@@ -112,7 +112,7 @@ final class DaemonClient {
 
     private func startDaemon() throws {
         guard let executableURL = Bundle.main.executableURL else {
-            throw WPError.message("cannot locate current executable")
+            throw WBError.message("cannot locate current executable")
         }
 
         let process = Process()
@@ -120,14 +120,14 @@ final class DaemonClient {
         process.arguments = ["__daemon"]
         if let idleTimeout {
             var environment = ProcessInfo.processInfo.environment
-            environment["WP_IDLE_SECONDS"] = String(idleTimeout)
+            environment["WB_IDLE_SECONDS"] = String(idleTimeout)
             process.environment = environment
         }
         if let devNull = FileHandle(forReadingAtPath: "/dev/null") {
             process.standardInput = devNull
         }
 
-        let logPath = "/tmp/wp-webpage-\(Darwin.getuid()).log"
+        let logPath = "/tmp/wb-webpage-\(Darwin.getuid()).log"
         _ = FileManager.default.createFile(atPath: logPath, contents: nil)
         if let log = FileHandle(forWritingAtPath: logPath) {
             _ = try? log.seekToEnd()
@@ -152,7 +152,7 @@ final class DaemonClient {
             Thread.sleep(forTimeInterval: 0.1)
         }
 
-        throw WPError.message("daemon did not start: \(lastError?.localizedDescription ?? "unknown error")")
+        throw WBError.message("daemon did not start: \(lastError?.localizedDescription ?? "unknown error")")
     }
 }
 
@@ -180,7 +180,7 @@ private final class UnixSocketServer: @unchecked Sendable {
 
         fd = Darwin.socket(AF_UNIX, SOCK_STREAM, 0)
         guard fd >= 0 else {
-            throw WPError.posix("socket")
+            throw WBError.posix("socket")
         }
 
         Darwin.unlink(socketPath)
@@ -191,18 +191,18 @@ private final class UnixSocketServer: @unchecked Sendable {
             }
         }
         guard bindResult == 0 else {
-            throw WPError.posix("bind \(socketPath)")
+            throw WBError.posix("bind \(socketPath)")
         }
 
         guard Darwin.listen(fd, 16) == 0 else {
-            throw WPError.posix("listen")
+            throw WBError.posix("listen")
         }
 
         let serverFD = fd
         thread = Thread {
             Self.acceptLoop(fd: serverFD, activity: activity, handler: handler)
         }
-        thread?.name = "wp-webpage-daemon"
+        thread?.name = "wb-webpage-daemon"
         thread?.start()
     }
 
@@ -217,7 +217,7 @@ private final class UnixSocketServer: @unchecked Sendable {
                 if errno == EINTR {
                     continue
                 }
-                printError(WPError.posix("accept").localizedDescription)
+                printError(WBError.posix("accept").localizedDescription)
                 return
             }
             activity.beginRequest()
@@ -256,7 +256,7 @@ private enum UnixSocketTransport {
 
         let fd = Darwin.socket(AF_UNIX, SOCK_STREAM, 0)
         guard fd >= 0 else {
-            throw WPError.posix("socket")
+            throw WBError.posix("socket")
         }
         defer { Darwin.close(fd) }
 
@@ -267,7 +267,7 @@ private enum UnixSocketTransport {
             }
         }
         guard connectResult == 0 else {
-            throw WPError.posix("connect \(socketPath)")
+            throw WBError.posix("connect \(socketPath)")
         }
 
         try writeMessage(data, to: fd)
@@ -285,7 +285,7 @@ private enum UnixSocketTransport {
 
             if count == 0 {
                 if data.isEmpty {
-                    throw WPError.message("connection closed")
+                    throw WBError.message("connection closed")
                 }
                 return data
             }
@@ -294,7 +294,7 @@ private enum UnixSocketTransport {
                 if errno == EINTR {
                     continue
                 }
-                throw WPError.posix("read")
+                throw WBError.posix("read")
             }
 
             if byte == 10 {
@@ -329,7 +329,7 @@ private enum UnixSocketTransport {
                     if errno == EINTR {
                         continue
                     }
-                    throw WPError.posix("write")
+                    throw WBError.posix("write")
                 }
 
                 sent += written
@@ -345,7 +345,7 @@ private struct UnixSocketAddress {
         let pathBytes = Array(path.utf8) + [0]
         let capacity = MemoryLayout.size(ofValue: address.sun_path)
         guard pathBytes.count <= capacity else {
-            throw WPError.message("socket path is too long: \(path)")
+            throw WBError.message("socket path is too long: \(path)")
         }
 
         address.sun_family = sa_family_t(AF_UNIX)

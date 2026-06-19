@@ -20,8 +20,7 @@ struct CLIInvocation {
 }
 
 enum RenderMode {
-    case help
-    case pageHelp
+    case help(HelpTopic)
     case daemonStatus
     case daemonStart
     case browserID
@@ -31,9 +30,24 @@ enum RenderMode {
     case page(PageOutputOptions)
     case interaction
     case value
-    case text
-    case html
     case message
+}
+
+enum HelpTopic {
+    case root
+    case create
+    case list
+    case close
+    case dump
+    case page
+    case click
+    case fill
+    case submit
+    case eval
+    case daemon
+    case daemonStart
+    case daemonStatus
+    case daemonStop
 }
 
 struct PageOutputOptions {
@@ -49,152 +63,28 @@ struct PageOutputOptions {
 struct CLIParser {
     static func parse(_ rawArguments: [String]) throws -> CLIInvocation {
         var arguments = rawArguments
-        var browser: String?
 
-        while let first = arguments.first {
-            if first == "--help" || first == "-h" {
-                return CLIInvocation(request: nil, renderMode: .help, startDaemon: false)
-            }
-
-            if first == "--browser" || first == "-b" {
-                arguments.removeFirst()
-                browser = try arguments.popFirst("missing browser id after \(first)")
-                continue
-            }
-
-            if first.hasPrefix("--browser=") {
-                browser = String(first.dropFirst("--browser=".count))
-                arguments.removeFirst()
-                continue
-            }
-
-            if first.hasPrefix("-b"), first.count > 2 {
-                browser = String(first.dropFirst(2))
-                arguments.removeFirst()
-                continue
-            }
-
-            break
+        if arguments.first == "--help" || arguments.first == "-h" {
+            return help(.root)
         }
 
         guard let command = arguments.first else {
-            return CLIInvocation(request: nil, renderMode: .help, startDaemon: false)
+            return help(.root)
         }
 
         arguments.removeFirst()
 
         switch command {
         case "help":
-            if arguments.first == "page" {
-                return CLIInvocation(request: nil, renderMode: .pageHelp, startDaemon: false)
-            }
-            return CLIInvocation(request: nil, renderMode: .help, startDaemon: false)
+            return try parseHelpCommand(arguments)
 
-        case "browser":
-            return try parseBrowserCommand(browser: browser, arguments: arguments)
-
-        case "daemon":
-            return try parseDaemonCommand(arguments)
-
-        case "open", "go":
-            var arguments = arguments
-            if arguments.containsHelpFlag {
-                return CLIInvocation(request: nil, renderMode: .help, startDaemon: false)
-            }
-            let full = arguments.removeFlag("--full")
-            let pageOptions = try parsePageOutputOptions(&arguments)
-            let url = try arguments.popFirst("usage: wp open <url>")
-            guard arguments.isEmpty else {
-                throw WPError.message("unexpected open argument \(arguments[0])")
-            }
-            if !full && pageOptions.hasFullOutputOptions {
-                throw WPError.message("open page output options require --full")
-            }
-            return CLIInvocation(
-                request: WireRequest(command: .open, browser: browser, url: url),
-                renderMode: full ? .page(pageOptions) : .pageSummary,
-                startDaemon: true,
-                daemonIdleTimeout: nil
-            )
-
-        case "page":
-            if arguments.containsHelpFlag {
-                return CLIInvocation(request: nil, renderMode: .pageHelp, startDaemon: false)
-            }
-            let pageOptions = try parsePageOutputOptions(&arguments)
-            guard arguments.isEmpty else {
-                throw WPError.message("unknown page option \(arguments[0])")
-            }
-            return CLIInvocation(
-                request: WireRequest(command: .page, browser: browser),
-                renderMode: .page(pageOptions),
-                startDaemon: true
-            )
-
-        case "click":
-            let index = try arguments.popInt("usage: wp -b <id> click <action-number>")
-            return CLIInvocation(
-                request: WireRequest(command: .click, browser: browser, index: index),
-                renderMode: .interaction,
-                startDaemon: true
-            )
-
-        case "fill":
-            let index = try arguments.popInt("usage: wp -b <id> fill <action-number> <text>")
-            let value = try arguments.joinRemaining("usage: wp -b <id> fill <action-number> <text>")
-            return CLIInvocation(
-                request: WireRequest(command: .fill, browser: browser, index: index, value: value),
-                renderMode: .interaction,
-                startDaemon: true
-            )
-
-        case "submit":
-            let index = try arguments.popInt("usage: wp -b <id> submit <action-number>")
-            return CLIInvocation(
-                request: WireRequest(command: .submit, browser: browser, index: index),
-                renderMode: .interaction,
-                startDaemon: true
-            )
-
-        case "eval":
-            let functionBody = arguments.removeFlag("--body")
-            let script = try arguments.joinRemaining("usage: wp -b <id> eval [--body] <javascript>")
-            return CLIInvocation(
-                request: WireRequest(
-                    command: .eval,
-                    browser: browser,
-                    script: script,
-                    functionBody: functionBody ? true : nil
-                ),
-                renderMode: .value,
-                startDaemon: true
-            )
-
-        case "text":
-            return CLIInvocation(
-                request: WireRequest(command: .text, browser: browser, selector: arguments.joinedOrNil()),
-                renderMode: .text,
-                startDaemon: true
-            )
-
-        case "html":
-            return CLIInvocation(
-                request: WireRequest(command: .html, browser: browser, selector: arguments.joinedOrNil()),
-                renderMode: .html,
-                startDaemon: true
-            )
-
-        default:
-            throw WPError.message("unknown command \(command)")
-        }
-    }
-
-    private static func parseBrowserCommand(browser: String?, arguments: [String]) throws -> CLIInvocation {
-        var arguments = arguments
-        let command = try arguments.popFirst("usage: wp browser <create|list|close>")
-
-        switch command {
         case "create":
+            if arguments.containsHelpFlag {
+                return help(.create)
+            }
+            guard arguments.isEmpty else {
+                throw WBError.message("unexpected create argument \(arguments[0])")
+            }
             return CLIInvocation(
                 request: WireRequest(command: .browserCreate),
                 renderMode: .browserID,
@@ -203,6 +93,12 @@ struct CLIParser {
             )
 
         case "list", "ls":
+            if arguments.containsHelpFlag {
+                return help(.list)
+            }
+            guard arguments.isEmpty else {
+                throw WBError.message("unexpected list argument \(arguments[0])")
+            }
             return CLIInvocation(
                 request: WireRequest(command: .browserList),
                 renderMode: .browsers,
@@ -211,7 +107,16 @@ struct CLIParser {
             )
 
         case "close", "delete", "rm":
-            let id = arguments.first ?? browser
+            if arguments.containsHelpFlag {
+                return help(.close)
+            }
+            let id = try popBrowserID(
+                from: &arguments,
+                usage: "usage: wb close <id>"
+            )
+            guard arguments.isEmpty else {
+                throw WBError.message("unexpected close argument \(arguments[0])")
+            }
             return CLIInvocation(
                 request: WireRequest(command: .browserClose, browser: id),
                 renderMode: .message,
@@ -220,7 +125,16 @@ struct CLIParser {
             )
 
         case "dump":
-            let id = arguments.first ?? browser
+            if arguments.containsHelpFlag {
+                return help(.dump)
+            }
+            let id = try popBrowserID(
+                from: &arguments,
+                usage: "usage: wb dump <id>"
+            )
+            guard arguments.isEmpty else {
+                throw WBError.message("unexpected dump argument \(arguments[0])")
+            }
             return CLIInvocation(
                 request: WireRequest(command: .browserDump, browser: id),
                 renderMode: .browserMessage,
@@ -228,31 +142,222 @@ struct CLIParser {
                 daemonIdleTimeout: nil
             )
 
-        case "resume":
-            let id = arguments.first ?? browser
+        case "daemon":
+            return try parseDaemonCommand(arguments)
+
+        case "page":
+            if arguments.containsHelpFlag {
+                return help(.page)
+            }
+            var arguments = arguments
+            let pageOptions = try parsePageOutputOptions(&arguments)
+            let id = try popBrowserID(
+                from: &arguments,
+                usage: "usage: wb page <id> [--fields <list>] [--selectors|--action-details]"
+            )
+            guard arguments.isEmpty else {
+                throw WBError.message("unknown page option \(arguments[0])")
+            }
             return CLIInvocation(
-                request: WireRequest(command: .browserResume, browser: id),
-                renderMode: .pageSummary,
-                startDaemon: true,
-                daemonIdleTimeout: nil
+                request: WireRequest(command: .page, browser: id),
+                renderMode: .page(pageOptions),
+                startDaemon: true
+            )
+
+        case "click":
+            if arguments.containsHelpFlag {
+                return help(.click)
+            }
+            let id = try popBrowserID(
+                from: &arguments,
+                usage: "usage: wb click <id> <action>"
+            )
+            let action = try arguments.popFirst("usage: wb click <id> <action>")
+            guard arguments.isEmpty else {
+                throw WBError.message("unexpected click argument \(arguments[0])")
+            }
+            return CLIInvocation(
+                request: WireRequest(command: .click, browser: id, action: action, index: Int(action)),
+                renderMode: .interaction,
+                startDaemon: true
+            )
+
+        case "fill":
+            if arguments.containsHelpFlag {
+                return help(.fill)
+            }
+            let id = try popBrowserID(
+                from: &arguments,
+                usage: "usage: wb fill <id> <action> <text>"
+            )
+            let action = try arguments.popFirst("usage: wb fill <id> <action> <text>")
+            let value = try arguments.joinRemaining("usage: wb fill <id> <action> <text>")
+            return CLIInvocation(
+                request: WireRequest(command: .fill, browser: id, action: action, index: Int(action), value: value),
+                renderMode: .interaction,
+                startDaemon: true
+            )
+
+        case "submit":
+            if arguments.containsHelpFlag {
+                return help(.submit)
+            }
+            let id = try popBrowserID(
+                from: &arguments,
+                usage: "usage: wb submit <id> <action>"
+            )
+            let action = try arguments.popFirst("usage: wb submit <id> <action>")
+            guard arguments.isEmpty else {
+                throw WBError.message("unexpected submit argument \(arguments[0])")
+            }
+            return CLIInvocation(
+                request: WireRequest(command: .submit, browser: id, action: action, index: Int(action)),
+                renderMode: .interaction,
+                startDaemon: true
+            )
+
+        case "eval":
+            if arguments.containsHelpFlag {
+                return help(.eval)
+            }
+            let functionBody = arguments.removeFlag("--body")
+            let id = try popBrowserID(
+                from: &arguments,
+                usage: "usage: wb eval <id> [--body] <javascript>"
+            )
+            let script = try arguments.joinRemaining("usage: wb eval <id> [--body] <javascript>")
+            return CLIInvocation(
+                request: WireRequest(
+                    command: .eval,
+                    browser: id,
+                    script: script,
+                    functionBody: functionBody ? true : nil
+                ),
+                renderMode: .value,
+                startDaemon: true
             )
 
         default:
-            throw WPError.message("unknown browser command \(command)")
+            return try parsePositionalOpen(first: command, rest: arguments)
+        }
+    }
+
+    private static func parsePositionalOpen(first: String, rest arguments: [String]) throws -> CLIInvocation {
+        guard !first.hasPrefix("-") else {
+            throw WBError.message("unknown command \(first)")
+        }
+
+        let browser: String?
+        let url: String
+        switch arguments.count {
+        case 0:
+            browser = nil
+            url = first
+
+        case 1:
+            guard isBrowserID(first) else {
+                throw WBError.message("unknown command \(first)")
+            }
+            browser = first
+            url = arguments[0]
+
+        default:
+            throw WBError.message("unexpected URL argument \(arguments[1])")
+        }
+
+        return CLIInvocation(
+            request: WireRequest(command: .open, browser: browser, url: url),
+            renderMode: .pageSummary,
+            startDaemon: true,
+            daemonIdleTimeout: nil
+        )
+    }
+
+    private static func help(_ topic: HelpTopic) -> CLIInvocation {
+        CLIInvocation(request: nil, renderMode: .help(topic), startDaemon: false)
+    }
+
+    private static func parseHelpCommand(_ arguments: [String]) throws -> CLIInvocation {
+        var arguments = arguments
+        guard let command = arguments.first else {
+            return help(.root)
+        }
+        arguments.removeFirst()
+
+        if command == "daemon" {
+            guard let daemonCommand = arguments.first else {
+                return help(.daemon)
+            }
+            switch daemonCommand {
+            case "start":
+                return help(.daemonStart)
+            case "status":
+                return help(.daemonStatus)
+            case "stop":
+                return help(.daemonStop)
+            default:
+                throw WBError.message("unknown daemon command \(daemonCommand)")
+            }
+        }
+
+        switch command {
+        case "create":
+            return help(.create)
+        case "list", "ls":
+            return help(.list)
+        case "close", "delete", "rm":
+            return help(.close)
+        case "dump":
+            return help(.dump)
+        case "page":
+            return help(.page)
+        case "click":
+            return help(.click)
+        case "fill":
+            return help(.fill)
+        case "submit":
+            return help(.submit)
+        case "eval":
+            return help(.eval)
+        default:
+            throw WBError.message("unknown help topic \(command)")
+        }
+    }
+
+    private static func popBrowserID(
+        from arguments: inout [String],
+        usage: String
+    ) throws -> String {
+        return try arguments.popFirst(usage)
+    }
+
+    private static func isBrowserID(_ value: String) -> Bool {
+        let bytes = value.utf8
+        guard bytes.count == 8 else {
+            return false
+        }
+        return bytes.allSatisfy { byte in
+            (byte >= 48 && byte <= 57) || (byte >= 97 && byte <= 102)
         }
     }
 
     private static func parseDaemonCommand(_ arguments: [String]) throws -> CLIInvocation {
         guard let command = arguments.first else {
-            throw WPError.message("usage: wp daemon <start|status|stop>")
+            return help(.daemon)
+        }
+        if command == "--help" || command == "-h" {
+            return help(.daemon)
         }
 
         switch command {
         case "start":
             var arguments = Array(arguments.dropFirst())
+            if arguments.containsHelpFlag {
+                return help(.daemonStart)
+            }
             let idleTimeout = try parseIdleTimeoutOption(&arguments)
             guard arguments.isEmpty else {
-                throw WPError.message("unknown daemon start option \(arguments[0])")
+                throw WBError.message("unknown daemon start option \(arguments[0])")
             }
             return CLIInvocation(
                 request: WireRequest(command: .ping),
@@ -262,6 +367,13 @@ struct CLIParser {
             )
 
         case "status":
+            let arguments = Array(arguments.dropFirst())
+            if arguments.containsHelpFlag {
+                return help(.daemonStatus)
+            }
+            guard arguments.isEmpty else {
+                throw WBError.message("unexpected daemon status argument \(arguments[0])")
+            }
             return CLIInvocation(
                 request: nil,
                 renderMode: .daemonStatus,
@@ -270,6 +382,13 @@ struct CLIParser {
             )
 
         case "stop":
+            let arguments = Array(arguments.dropFirst())
+            if arguments.containsHelpFlag {
+                return help(.daemonStop)
+            }
+            guard arguments.isEmpty else {
+                throw WBError.message("unexpected daemon stop argument \(arguments[0])")
+            }
             return CLIInvocation(
                 request: WireRequest(command: .daemonStop),
                 renderMode: .message,
@@ -278,22 +397,19 @@ struct CLIParser {
             )
 
         default:
-            throw WPError.message("unknown daemon command \(command)")
+            throw WBError.message("unknown daemon command \(command)")
         }
     }
 }
 
 func render(_ response: WireResponse, mode: RenderMode) throws {
     if !response.ok {
-        throw WPError.message(response.error ?? "request failed")
+        throw WBError.message(response.error ?? "request failed")
     }
 
     switch mode {
-    case .help:
-        printUsage()
-
-    case .pageHelp:
-        printPageUsage()
+    case .help(let topic):
+        printHelp(topic)
 
     case .daemonStatus:
         break
@@ -336,102 +452,164 @@ func render(_ response: WireResponse, mode: RenderMode) throws {
     case .value:
         print(response.value ?? "")
 
-    case .text:
-        print(response.text ?? "")
-
-    case .html:
-        print(response.html ?? "")
-
     case .message:
         print(response.message ?? "ok")
     }
 }
 
-func printUsage() {
-    print("""
-    Usage:
-      wp browser create
-      wp browser list
-      wp browser close <id>
-      wp browser dump <id>
-      wp browser resume <id>
+func printHelp(_ topic: HelpTopic) {
+    switch topic {
+    case .root:
+        print("""
+        Usage:
+          wb [<id>] <url>
+          wb create
+          wb list
+          wb close <id>
+          wb dump <id>
 
-      wp open <url>
-      wp open --full [--fields <list>] [--selectors|--action-details] <url>
-      wp --browser <id> open <url>
-      wp -b <id> page [--fields <list>] [--selectors|--action-details]
-      wp -b <id> click <action-number>
-      wp -b <id> fill <action-number> <text>
-      wp -b <id> submit <action-number>
-      wp -b <id> eval [--body] <javascript>
-      wp -b <id> text [css-selector]
-      wp -b <id> html [css-selector]
+          wb page <id> [--fields <list>] [--selectors|--action-details]
+          wb click <id> <action>
+          wb fill <id> <action> <text>
+          wb submit <id> <action>
+          wb eval <id> [--body] <javascript>
 
-      wp daemon start [--idle-timeout <seconds|off>]
-      wp daemon status
-      wp daemon stop
+          wb daemon <start|status|stop>
 
-    Notes:
-      - Commands auto-start a local daemon, except daemon status/stop.
-      - 'wp open <url>' creates a browser, opens the page, and prints a compact summary.
-      - Use 'wp page --help' to see the page JSON shape and filterable fields.
-      - Use '--selectors' to show action CSS selectors and '--action-details' for raw action metadata.
-      - JSON output is compact and omits false, empty, and null fields.
-    """)
-}
+        Options:
+          -h, --help            Show help.
 
-func printPageUsage() {
-    let fields = PageField.allCases.map(\.rawValue).joined(separator: ",")
-    print("""
-    Usage:
-      wp -b <id> page [--fields <list>] [--selectors|--action-details]
-      wp open --full [--fields <list>] [--selectors|--action-details] <url>
+        Notes:
+          - Browsers persist between commands; use wb list to see saved IDs.
+          - Dumped browser IDs resume automatically when used.
+          - JSON output is compact and omits false, empty, and null fields.
+          - Run 'wb <command> --help' for command details.
+        """)
 
-    Options:
-      --fields <list>       Comma-separated top-level fields to print.
-      --selectors           Include action CSS selectors.
-      --action-details      Include action id, index, tag, type, and selector.
+    case .create:
+        print("""
+        Usage:
+          wb create
 
-    Page JSON:
-      {
-        "actions": [
-          {
-            "disabled": false,
-            "href": "https://example.com/",
-            "id": "wkcli-...",
-            "index": 1,
-            "kind": "link|button|fill|form|selector|toggle",
-            "selector": "main a",
-            "tag": "a",
-            "text": "Visible label",
-            "type": "text"
-          }
-        ],
-        "browser": "a3f19c0b",
-        "htmlBytes": 12345,
-        "images": 3,
-        "jsonBytes": 6789,
-        "loading": false,
-        "progress": 1.0,
-        "text": "Visible markdown-like text",
-        "title": "Page title",
-        "url": "https://example.com/"
-      }
+        Creates an empty browser and prints its ID.
+        """)
 
-    Fields:
-      \(fields)
+    case .list:
+        print("""
+        Usage:
+          wb list
 
-    Notes:
-      - JSON output omits false, empty, and null fields.
-      - Default actions omit id, index, tag, type, and selector unless requested.
-      - images is document.images.length.
-      - htmlBytes is the UTF-8 size of document.documentElement.outerHTML.
-      - jsonBytes is the UTF-8 size of the default full page JSON, excluding jsonBytes itself.
+        Lists active and dumped browsers as compact JSON.
+        """)
 
-    Examples:
-      wp -b a3f19c0b page --fields title,url,images,htmlBytes,jsonBytes
-      wp -b a3f19c0b page --fields actions --action-details
-    """)
+    case .close:
+        print("""
+        Usage:
+          wb close <id>
+
+        Closes an active browser and deletes any dumped session for that ID.
+        """)
+
+    case .dump:
+        print("""
+        Usage:
+          wb dump <id>
+
+        Saves the browser so it can be resumed later.
+        """)
+
+    case .page:
+        print("""
+        Usage:
+          wb page <id> [--fields <list>] [--selectors|--action-details]
+
+        Prints visible page text, page metadata, and actionable elements.
+
+        Options:
+          --fields <list>       Comma-separated fields: \(PageField.validList)
+          --selectors           Include action CSS selectors.
+          --action-details      Include action id, index, tag, type, and selector.
+
+        Notes:
+          - Default actions include kind, text, href, and disabled state.
+          - Use action numbers by default; use --action-details to get action IDs.
+        """)
+
+    case .click:
+        print("""
+        Usage:
+          wb click <id> <action>
+
+        Clicks an action from the latest page output.
+        <action> may be a 1-based number or an action ID.
+        """)
+
+    case .fill:
+        print("""
+        Usage:
+          wb fill <id> <action> <text>
+
+        Sets the value of an input, textarea, select, or contenteditable action.
+        <action> may be a 1-based number or an action ID.
+        """)
+
+    case .submit:
+        print("""
+        Usage:
+          wb submit <id> <action>
+
+        Submits the nearest form for an action, or clicks the action if no form exists.
+        <action> may be a 1-based number or an action ID.
+        """)
+
+    case .eval:
+        print("""
+        Usage:
+          wb eval <id> [--body] <javascript>
+
+        Evaluates JavaScript in the browser and prints the result.
+
+        Options:
+          --body                Treat the script as a WebPage.callJavaScript body.
+        """)
+
+    case .daemon:
+        print("""
+        Usage:
+          wb daemon start [--idle-timeout <seconds|off>]
+          wb daemon status
+          wb daemon stop
+
+        Controls the local browser daemon.
+        """)
+
+    case .daemonStart:
+        print("""
+        Usage:
+          wb daemon start [--idle-timeout <seconds|off>]
+
+        Starts the daemon if it is not running.
+
+        Options:
+          --idle-timeout <seconds|off>    Override idle shutdown for this daemon.
+        """)
+
+    case .daemonStatus:
+        print("""
+        Usage:
+          wb daemon status
+
+        Prints 'running' or 'not running'.
+        """)
+
+    case .daemonStop:
+        print("""
+        Usage:
+          wb daemon stop
+
+        Dumps active browsers and stops the daemon.
+        """)
+    }
 }
 
 private struct BrowserMessageOutput: Encodable {
@@ -602,13 +780,13 @@ enum PageField: String, CaseIterable, Hashable {
             .filter { !$0.isEmpty }
 
         guard !names.isEmpty else {
-            throw WPError.message("--fields requires at least one field")
+            throw WBError.message("--fields requires at least one field")
         }
 
         var fields: Set<PageField> = []
         for name in names {
             guard let field = PageField(rawValue: name) else {
-                throw WPError.message("unknown page field \(name); valid fields: \(validList)")
+                throw WBError.message("unknown page field \(name); valid fields: \(validList)")
             }
             fields.insert(field)
         }
@@ -631,7 +809,7 @@ private func defaultPageJSONByteCount(_ page: PageSnapshot) -> Int? {
 private extension Array where Element == String {
     mutating func popFirst(_ errorMessage: String) throws -> String {
         guard !isEmpty else {
-            throw WPError.message(errorMessage)
+            throw WBError.message(errorMessage)
         }
         return removeFirst()
     }
@@ -639,7 +817,7 @@ private extension Array where Element == String {
     mutating func popInt(_ errorMessage: String) throws -> Int {
         let value = try popFirst(errorMessage)
         guard let integer = Int(value) else {
-            throw WPError.message("expected integer, got \(value)")
+            throw WBError.message("expected integer, got \(value)")
         }
         return integer
     }
@@ -647,7 +825,7 @@ private extension Array where Element == String {
     func joinRemaining(_ errorMessage: String) throws -> String {
         let value = joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty else {
-            throw WPError.message(errorMessage)
+            throw WBError.message(errorMessage)
         }
         return value
     }
@@ -721,8 +899,8 @@ private func parseIdleTimeoutOption(_ arguments: inout [String]) throws -> TimeI
             continue
         }
 
-        guard let parsed = WPConfig.parseIdleTimeout(rawValue) else {
-            throw WPError.message("invalid idle timeout \(rawValue)")
+        guard let parsed = WBConfig.parseIdleTimeout(rawValue) else {
+            throw WBError.message("invalid idle timeout \(rawValue)")
         }
         idleTimeout = parsed
     }
