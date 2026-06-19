@@ -286,6 +286,7 @@ private final class BrowserInstance {
     func snapshot() async throws -> PageSnapshot {
         let currentActions = try await refreshActions()
         let visibleText = try? await markdownText(maxLength: 6000)
+        let stats = try? await pageStats()
         updatedAt = Date()
 
         return PageSnapshot(
@@ -294,6 +295,8 @@ private final class BrowserInstance {
             url: page.url?.absoluteString,
             loading: page.isLoading,
             progress: page.estimatedProgress,
+            images: stats?.images,
+            htmlBytes: stats?.htmlBytes,
             text: visibleText,
             actions: currentActions
         )
@@ -363,6 +366,12 @@ private final class BrowserInstance {
 
     func markdownText(maxLength: Int = 12000) async throws -> String {
         try await callString(Self.markdownTextScript, arguments: ["maxLength": maxLength])
+    }
+
+    func pageStats() async throws -> PageDOMStats {
+        let json = try await callString(Self.pageStatsScript)
+        let data = Data(json.utf8)
+        return try JSONDecoder().decode(PageDOMStats.self, from: data)
     }
 
     func summary() -> BrowserSummary {
@@ -649,6 +658,17 @@ private final class BrowserInstance {
     return root.outerHTML.slice(0, maxLength);
     """
 
+    private static let pageStatsScript = """
+    const html = document.documentElement ? document.documentElement.outerHTML : "";
+    const htmlBytes = typeof TextEncoder === "function"
+      ? new TextEncoder().encode(html).length
+      : new Blob([html]).size;
+    return JSON.stringify({
+      images: document.images ? document.images.length : document.querySelectorAll("img").length,
+      htmlBytes
+    });
+    """
+
     private static let markdownTextScript = """
     const max = Number(maxLength) || 12000;
     const root = document.body;
@@ -786,4 +806,9 @@ private final class BrowserInstance {
 private struct InteractionResult {
     let message: String
     let page: PageSnapshot
+}
+
+private struct PageDOMStats: Decodable, Sendable {
+    let images: Int
+    let htmlBytes: Int
 }

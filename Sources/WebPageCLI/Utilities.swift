@@ -81,12 +81,16 @@ func printable(_ value: Any?) -> String {
 }
 
 func printJSON<T: Encodable>(_ value: T) throws {
+    print(try compactJSONString(value))
+}
+
+func compactJSONString<T: Encodable>(_ value: T) throws -> String {
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.sortedKeys]
     let encoded = try encoder.encode(value)
     let object = try JSONSerialization.jsonObject(with: encoded)
     let pruned = pruneJSONObject(object)
-    print(try renderJSONObject(pruned))
+    return try renderJSONObject(pruned)
 }
 
 func printError(_ message: String) {

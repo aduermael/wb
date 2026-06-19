@@ -141,6 +141,8 @@ struct PageSnapshot: Codable, Sendable {
     let url: String?
     let loading: Bool
     let progress: Double
+    let images: Int?
+    let htmlBytes: Int?
     let text: String?
     let actions: [BrowserAction]
 }

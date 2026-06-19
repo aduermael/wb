@@ -21,6 +21,7 @@ struct CLIInvocation {
 
 enum RenderMode {
     case help
+    case pageHelp
     case daemonStatus
     case daemonStart
     case browserID
@@ -38,9 +39,10 @@ enum RenderMode {
 struct PageOutputOptions {
     var includeActionSelectors = false
     var includeActionDetails = false
+    var fields: Set<PageField>?
 
-    var hasActionOptions: Bool {
-        includeActionSelectors || includeActionDetails
+    var hasFullOutputOptions: Bool {
+        includeActionSelectors || includeActionDetails || fields != nil
     }
 }
 
@@ -82,6 +84,12 @@ struct CLIParser {
         arguments.removeFirst()
 
         switch command {
+        case "help":
+            if arguments.first == "page" {
+                return CLIInvocation(request: nil, renderMode: .pageHelp, startDaemon: false)
+            }
+            return CLIInvocation(request: nil, renderMode: .help, startDaemon: false)
+
         case "browser":
             return try parseBrowserCommand(browser: browser, arguments: arguments)
 
@@ -90,14 +98,17 @@ struct CLIParser {
 
         case "open", "go":
             var arguments = arguments
+            if arguments.containsHelpFlag {
+                return CLIInvocation(request: nil, renderMode: .help, startDaemon: false)
+            }
             let full = arguments.removeFlag("--full")
-            let pageOptions = parsePageOutputOptions(&arguments)
+            let pageOptions = try parsePageOutputOptions(&arguments)
             let url = try arguments.popFirst("usage: wp open <url>")
             guard arguments.isEmpty else {
                 throw WPError.message("unexpected open argument \(arguments[0])")
             }
-            if !full && pageOptions.hasActionOptions {
-                throw WPError.message("open action output options require --full")
+            if !full && pageOptions.hasFullOutputOptions {
+                throw WPError.message("open page output options require --full")
             }
             return CLIInvocation(
                 request: WireRequest(command: .open, browser: browser, url: url),
@@ -107,7 +118,10 @@ struct CLIParser {
             )
 
         case "page":
-            let pageOptions = parsePageOutputOptions(&arguments)
+            if arguments.containsHelpFlag {
+                return CLIInvocation(request: nil, renderMode: .pageHelp, startDaemon: false)
+            }
+            let pageOptions = try parsePageOutputOptions(&arguments)
             guard arguments.isEmpty else {
                 throw WPError.message("unknown page option \(arguments[0])")
             }
@@ -278,6 +292,9 @@ func render(_ response: WireResponse, mode: RenderMode) throws {
     case .help:
         printUsage()
 
+    case .pageHelp:
+        printPageUsage()
+
     case .daemonStatus:
         break
 
@@ -340,9 +357,9 @@ func printUsage() {
       wp browser resume <id>
 
       wp open <url>
-      wp open --full [--selectors|--action-details] <url>
+      wp open --full [--fields <list>] [--selectors|--action-details] <url>
       wp --browser <id> open <url>
-      wp -b <id> page [--selectors|--action-details]
+      wp -b <id> page [--fields <list>] [--selectors|--action-details]
       wp -b <id> click <action-number>
       wp -b <id> fill <action-number> <text>
       wp -b <id> submit <action-number>
@@ -357,8 +374,63 @@ func printUsage() {
     Notes:
       - Commands auto-start a local daemon, except daemon status/stop.
       - 'wp open <url>' creates a browser, opens the page, and prints a compact summary.
+      - Use 'wp page --help' to see the page JSON shape and filterable fields.
       - Use '--selectors' to show action CSS selectors and '--action-details' for raw action metadata.
       - JSON output is compact and omits false, empty, and null fields.
+    """)
+}
+
+func printPageUsage() {
+    let fields = PageField.allCases.map(\.rawValue).joined(separator: ",")
+    print("""
+    Usage:
+      wp -b <id> page [--fields <list>] [--selectors|--action-details]
+      wp open --full [--fields <list>] [--selectors|--action-details] <url>
+
+    Options:
+      --fields <list>       Comma-separated top-level fields to print.
+      --selectors           Include action CSS selectors.
+      --action-details      Include action id, index, tag, type, and selector.
+
+    Page JSON:
+      {
+        "actions": [
+          {
+            "disabled": false,
+            "href": "https://example.com/",
+            "id": "wkcli-...",
+            "index": 1,
+            "kind": "link|button|fill|form|selector|toggle",
+            "selector": "main a",
+            "tag": "a",
+            "text": "Visible label",
+            "type": "text"
+          }
+        ],
+        "browser": "a3f19c0b",
+        "htmlBytes": 12345,
+        "images": 3,
+        "jsonBytes": 6789,
+        "loading": false,
+        "progress": 1.0,
+        "text": "Visible markdown-like text",
+        "title": "Page title",
+        "url": "https://example.com/"
+      }
+
+    Fields:
+      \(fields)
+
+    Notes:
+      - JSON output omits false, empty, and null fields.
+      - Default actions omit id, index, tag, type, and selector unless requested.
+      - images is document.images.length.
+      - htmlBytes is the UTF-8 size of document.documentElement.outerHTML.
+      - jsonBytes is the UTF-8 size of the default full page JSON, excluding jsonBytes itself.
+
+    Examples:
+      wp -b a3f19c0b page --fields title,url,images,htmlBytes,jsonBytes
+      wp -b a3f19c0b page --fields actions --action-details
     """)
 }
 
@@ -374,6 +446,9 @@ private struct PageSummaryOutput: Encodable {
     let url: String?
     let loading: Bool
     let progress: Double?
+    let images: Int?
+    let htmlBytes: Int?
+    let jsonBytes: Int?
     let actions: Int?
 
     init(browser: String?, message: String?, page: PageSnapshot?) {
@@ -383,6 +458,9 @@ private struct PageSummaryOutput: Encodable {
         url = page.flatMap { $0.url }
         loading = page?.loading ?? false
         progress = page?.progress
+        images = page?.images
+        htmlBytes = page?.htmlBytes
+        jsonBytes = page.flatMap(defaultPageJSONByteCount)
         actions = page.map { $0.actions.count }
     }
 }
@@ -393,17 +471,74 @@ private struct PageOutput: Encodable {
     let url: String?
     let loading: Bool
     let progress: Double
+    let images: Int?
+    let htmlBytes: Int?
+    let jsonBytes: Int?
     let text: String?
     let actions: [PageActionOutput]
+    private let fields: Set<PageField>?
 
-    init(page: PageSnapshot, options: PageOutputOptions) {
+    init(page: PageSnapshot, options: PageOutputOptions, includeJSONBytes: Bool = true) {
         browser = page.browser
         title = page.title.nilIfEmpty
         url = page.url
         loading = page.loading
         progress = page.progress
+        images = page.images
+        htmlBytes = page.htmlBytes
+        jsonBytes = includeJSONBytes ? defaultPageJSONByteCount(page) : nil
         text = page.text.nilIfEmpty
         actions = page.actions.map { PageActionOutput(action: $0, options: options) }
+        fields = options.fields
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+
+        try encode(browser, for: .browser, in: &container)
+        try encode(title, for: .title, in: &container)
+        try encode(url, for: .url, in: &container)
+        try encode(loading, for: .loading, in: &container)
+        try encode(progress, for: .progress, in: &container)
+        try encode(images, for: .images, in: &container)
+        try encode(htmlBytes, for: .htmlBytes, in: &container)
+        try encode(jsonBytes, for: .jsonBytes, in: &container)
+        try encode(text, for: .text, in: &container)
+        try encode(actions, for: .actions, in: &container)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case actions
+        case browser
+        case htmlBytes
+        case images
+        case jsonBytes
+        case loading
+        case progress
+        case text
+        case title
+        case url
+    }
+
+    private func includes(_ key: CodingKeys) -> Bool {
+        guard let fields else {
+            return true
+        }
+        guard let field = PageField(rawValue: key.rawValue) else {
+            return true
+        }
+        return fields.contains(field)
+    }
+
+    private func encode<T: Encodable>(
+        _ value: T,
+        for key: CodingKeys,
+        in container: inout KeyedEncodingContainer<CodingKeys>
+    ) throws {
+        guard includes(key) else {
+            return
+        }
+        try container.encode(value, forKey: key)
     }
 }
 
@@ -444,6 +579,55 @@ private extension BrowserAction {
     }
 }
 
+enum PageField: String, CaseIterable, Hashable {
+    case actions
+    case browser
+    case htmlBytes
+    case images
+    case jsonBytes
+    case loading
+    case progress
+    case text
+    case title
+    case url
+
+    static var validList: String {
+        allCases.map(\.rawValue).joined(separator: ",")
+    }
+
+    static func parseList(_ rawValue: String) throws -> Set<PageField> {
+        let names = rawValue
+            .split(separator: ",")
+            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        guard !names.isEmpty else {
+            throw WPError.message("--fields requires at least one field")
+        }
+
+        var fields: Set<PageField> = []
+        for name in names {
+            guard let field = PageField(rawValue: name) else {
+                throw WPError.message("unknown page field \(name); valid fields: \(validList)")
+            }
+            fields.insert(field)
+        }
+        return fields
+    }
+}
+
+private func defaultPageJSONByteCount(_ page: PageSnapshot) -> Int? {
+    let output = PageOutput(
+        page: page,
+        options: PageOutputOptions(),
+        includeJSONBytes: false
+    )
+    guard let json = try? compactJSONString(output) else {
+        return nil
+    }
+    return json.utf8.count
+}
+
 private extension Array where Element == String {
     mutating func popFirst(_ errorMessage: String) throws -> String {
         guard !isEmpty else {
@@ -472,6 +656,10 @@ private extension Array where Element == String {
         joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
     }
 
+    var containsHelpFlag: Bool {
+        contains("--help") || contains("-h")
+    }
+
     mutating func removeFlag(_ flag: String) -> Bool {
         guard let index = firstIndex(of: flag) else {
             return false
@@ -481,26 +669,38 @@ private extension Array where Element == String {
     }
 }
 
-private func parsePageOutputOptions(_ arguments: inout [String]) -> PageOutputOptions {
+private func parsePageOutputOptions(_ arguments: inout [String]) throws -> PageOutputOptions {
     var options = PageOutputOptions()
-    var index = 0
+    var remaining: [String] = []
 
-    while index < arguments.count {
-        switch arguments[index] {
+    while !arguments.isEmpty {
+        let argument = arguments.removeFirst()
+        switch argument {
         case "--selectors", "--selector":
             options.includeActionSelectors = true
-            arguments.remove(at: index)
 
         case "--action-details", "--details", "--verbose":
             options.includeActionDetails = true
             options.includeActionSelectors = true
-            arguments.remove(at: index)
+
+        case "--fields", "--field":
+            let rawFields = try arguments.popFirst("missing value after \(argument)")
+            options.fields = try PageField.parseList(rawFields)
+
+        case let option where option.hasPrefix("--fields="):
+            let rawFields = String(option.dropFirst("--fields=".count))
+            options.fields = try PageField.parseList(rawFields)
+
+        case let option where option.hasPrefix("--field="):
+            let rawFields = String(option.dropFirst("--field=".count))
+            options.fields = try PageField.parseList(rawFields)
 
         default:
-            index += 1
+            remaining.append(argument)
         }
     }
 
+    arguments = remaining
     return options
 }
 

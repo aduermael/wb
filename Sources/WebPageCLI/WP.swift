@@ -37,6 +37,9 @@ private struct WP {
         case .help:
             printUsage()
 
+        case .pageHelp:
+            printPageUsage()
+
         case .daemonStatus:
             let client = DaemonClient()
             print(client.isRunning() ? "running" : "not running")
