@@ -86,8 +86,7 @@ func printJSON<T: Encodable>(_ value: T) throws {
     let encoded = try encoder.encode(value)
     let object = try JSONSerialization.jsonObject(with: encoded)
     let pruned = pruneJSONObject(object)
-    let data = try JSONSerialization.data(withJSONObject: pruned, options: [.sortedKeys])
-    print(String(data: data, encoding: .utf8) ?? "{}")
+    print(try renderJSONObject(pruned))
 }
 
 func printError(_ message: String) {
@@ -143,4 +142,58 @@ private func isJSONFalse(_ value: Any) -> Bool {
     }
 
     return CFGetTypeID(number) == CFBooleanGetTypeID() && !number.boolValue
+}
+
+private func renderJSONObject(_ value: Any, key: String? = nil) throws -> String {
+    if let dictionary = value as? [String: Any] {
+        let fields = try dictionary.keys.sorted().map { fieldKey in
+            let renderedKey = try renderJSONString(fieldKey)
+            let renderedValue = try renderJSONObject(dictionary[fieldKey]!, key: fieldKey)
+            return "\(renderedKey):\(renderedValue)"
+        }
+        return "{\(fields.joined(separator: ","))}"
+    }
+
+    if let array = value as? [Any] {
+        let items = try array.map { try renderJSONObject($0, key: key) }
+        return "[\(items.joined(separator: ","))]"
+    }
+
+    if let string = value as? String {
+        return try renderJSONString(string)
+    }
+
+    if value is NSNull {
+        return "null"
+    }
+
+    if let number = value as? NSNumber {
+        if CFGetTypeID(number) == CFBooleanGetTypeID() {
+            return number.boolValue ? "true" : "false"
+        }
+
+        if key == "progress" {
+            return renderJSONFloat(number.doubleValue)
+        }
+
+        return number.stringValue
+    }
+
+    return try renderJSONString(String(describing: value))
+}
+
+private func renderJSONString(_ value: String) throws -> String {
+    let data = try JSONSerialization.data(withJSONObject: [value])
+    guard let rendered = String(data: data, encoding: .utf8) else {
+        throw WPError.message("failed to render JSON string")
+    }
+    return String(rendered.dropFirst().dropLast())
+}
+
+private func renderJSONFloat(_ value: Double) -> String {
+    var rendered = String(value)
+    if !rendered.contains(".") && !rendered.lowercased().contains("e") {
+        rendered += ".0"
+    }
+    return rendered
 }

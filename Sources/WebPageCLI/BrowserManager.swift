@@ -8,14 +8,9 @@ import WebKit
 final class BrowserManager: @unchecked Sendable {
     private let sessionStore: SessionStore
     private var browsers: [String: BrowserInstance] = [:]
-    private var nextID = 1000
 
     init(config: WPConfig = .current()) {
         sessionStore = SessionStore(directory: config.sessionsDirectory)
-        let maxDumpedID = sessionStore.browserIDs().compactMap(Int.init).max()
-        if let maxDumpedID {
-            nextID = max(1000, maxDumpedID + 1)
-        }
     }
 
     func handleWireData(_ data: Data) async -> Data {
@@ -152,23 +147,23 @@ final class BrowserManager: @unchecked Sendable {
     private func createBrowser(id requestedID: String? = nil, createdAt: Date = Date(), updatedAt: Date = Date()) -> BrowserInstance {
         let id = requestedID ?? nextBrowserID()
 
-        if let numericID = Int(id) {
-            nextID = max(nextID, numericID + 1)
-        }
-
         let browser = BrowserInstance(id: id, createdAt: createdAt, updatedAt: updatedAt)
         browsers[id] = browser
         return browser
     }
 
     private func nextBrowserID() -> String {
-        while browsers[String(nextID)] != nil || sessionStore.exists(String(nextID)) {
-            nextID += 1
-        }
+        while true {
+            let id = UUID()
+                .uuidString
+                .replacingOccurrences(of: "-", with: "")
+                .prefix(8)
+                .lowercased()
 
-        let id = String(nextID)
-        nextID += 1
-        return id
+            if browsers[String(id)] == nil && !sessionStore.exists(String(id)) {
+                return String(id)
+            }
+        }
     }
 
     private func browserForOpen(id: String?) throws -> (browser: BrowserInstance, removeOnFailure: Bool) {
@@ -291,7 +286,7 @@ private final class BrowserInstance {
 
     func snapshot() async throws -> PageSnapshot {
         let currentActions = try await refreshActions()
-        let visibleText = try? await text(selector: nil, maxLength: 6000)
+        let visibleText = try? await markdownText(maxLength: 6000)
         updatedAt = Date()
 
         return PageSnapshot(
@@ -365,6 +360,10 @@ private final class BrowserInstance {
             Self.htmlScript,
             arguments: ["selector": selector as Any, "maxLength": maxLength]
         )
+    }
+
+    func markdownText(maxLength: Int = 12000) async throws -> String {
+        try await callString(Self.markdownTextScript, arguments: ["maxLength": maxLength])
     }
 
     func summary() -> BrowserSummary {
@@ -531,17 +530,22 @@ private final class BrowserInstance {
     function kindFor(el) {
       const tag = el.tagName.toLowerCase();
       const type = (el.getAttribute("type") || "").toLowerCase();
+      const role = (el.getAttribute("role") || "").toLowerCase();
 
       if (tag === "textarea" || el.isContentEditable) return "fill";
-      if (tag === "select") return "select";
+      if (tag === "select") return "selector";
       if (tag === "form") return "form";
+      if (tag === "a" || role === "link") return "link";
       if (tag === "input") {
         if (["text", "search", "email", "url", "tel", "password", "number"].includes(type || "text")) {
           return "fill";
         }
-        return "click";
+        if (["checkbox", "radio"].includes(type)) {
+          return "toggle";
+        }
+        return "button";
       }
-      return "click";
+      return "button";
     }
 
     const now = Date.now().toString(36);
@@ -644,6 +648,129 @@ private final class BrowserInstance {
     const root = selector ? document.querySelector(selector) : document.documentElement;
     if (!root) return "";
     return root.outerHTML.slice(0, maxLength);
+    """
+
+    private static let markdownTextScript = """
+    const max = Number(maxLength) || 12000;
+    const root = document.body;
+    if (!root) return "";
+
+    const blocks = new Set([
+      "address", "article", "aside", "blockquote", "br", "dd", "details", "dialog",
+      "div", "dl", "dt", "fieldset", "figcaption", "figure", "footer", "form",
+      "h1", "h2", "h3", "h4", "h5", "h6", "header", "hr", "li", "main", "nav",
+      "ol", "p", "pre", "section", "table", "tbody", "td", "tfoot", "th", "thead",
+      "tr", "ul"
+    ]);
+    const skipped = new Set(["canvas", "head", "noscript", "script", "style", "svg", "template"]);
+    let output = "";
+
+    function hidden(el) {
+      const style = window.getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return !style || style.visibility === "hidden" || style.display === "none" ||
+        (rect.width === 0 && rect.height === 0);
+    }
+
+    function appendText(value) {
+      if (output.length >= max) return;
+
+      const normalized = String(value || "").replace(/\\s+/g, " ").trim();
+      if (!normalized) return;
+
+      if (output && !/[\\s\\n]$/.test(output) && !/^[\\s.,;:!?)]/.test(normalized)) {
+        output += " ";
+      }
+      output += normalized;
+    }
+
+    function newline() {
+      output = output.replace(/[ \\t]+$/g, "");
+      if (!output || output.endsWith("\\n\\n")) return;
+      output += output.endsWith("\\n") ? "\\n" : "\\n\\n";
+    }
+
+    function plainText(node) {
+      if (node.nodeType === Node.TEXT_NODE) {
+        return node.nodeValue || "";
+      }
+      if (node.nodeType !== Node.ELEMENT_NODE) {
+        return "";
+      }
+
+      const el = node;
+      const tag = el.tagName.toLowerCase();
+      if (tag === "br") {
+        return "\\n";
+      }
+      if (skipped.has(tag) || hidden(el)) {
+        return "";
+      }
+
+      return Array.from(el.childNodes)
+        .map(plainText)
+        .join(" ")
+        .replace(/\\s+/g, " ")
+        .trim();
+    }
+
+    function escapeLabel(value) {
+      return value.replace(/[\\[\\]]/g, "\\\\$&").trim();
+    }
+
+    function escapeURL(value) {
+      return value.split(")").join("%29").trim();
+    }
+
+    function walk(node) {
+      if (output.length >= max) return;
+
+      if (node.nodeType === Node.TEXT_NODE) {
+        appendText(node.nodeValue);
+        return;
+      }
+      if (node.nodeType !== Node.ELEMENT_NODE) {
+        return;
+      }
+
+      const el = node;
+      const tag = el.tagName.toLowerCase();
+      if (tag === "br") {
+        output += "\\n";
+        return;
+      }
+      if (skipped.has(tag) || hidden(el)) {
+        return;
+      }
+
+      if (blocks.has(tag)) {
+        newline();
+      }
+
+      if (tag === "a" && el.href) {
+        const label = plainText(el);
+        if (label) {
+          appendText(`[${escapeLabel(label)}](${escapeURL(el.href)})`);
+          return;
+        }
+      }
+
+      for (const child of Array.from(el.childNodes)) {
+        walk(child);
+        if (output.length >= max) break;
+      }
+
+      if (blocks.has(tag)) {
+        newline();
+      }
+    }
+
+    walk(root);
+    return output
+      .replace(/[ \\t]+\\n/g, "\\n")
+      .replace(/\\n{3,}/g, "\\n\\n")
+      .trim()
+      .slice(0, max);
     """
 
     private static let evalScript = """

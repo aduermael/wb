@@ -27,12 +27,21 @@ enum RenderMode {
     case browsers
     case browserMessage
     case pageSummary
-    case page
+    case page(PageOutputOptions)
     case interaction
     case value
     case text
     case html
     case message
+}
+
+struct PageOutputOptions {
+    var includeActionSelectors = false
+    var includeActionDetails = false
+
+    var hasActionOptions: Bool {
+        includeActionSelectors || includeActionDetails
+    }
 }
 
 struct CLIParser {
@@ -80,19 +89,31 @@ struct CLIParser {
             return try parseDaemonCommand(arguments)
 
         case "open", "go":
+            var arguments = arguments
             let full = arguments.removeFlag("--full")
+            let pageOptions = parsePageOutputOptions(&arguments)
             let url = try arguments.popFirst("usage: wp open <url>")
+            guard arguments.isEmpty else {
+                throw WPError.message("unexpected open argument \(arguments[0])")
+            }
+            if !full && pageOptions.hasActionOptions {
+                throw WPError.message("open action output options require --full")
+            }
             return CLIInvocation(
                 request: WireRequest(command: .open, browser: browser, url: url),
-                renderMode: full ? .page : .pageSummary,
+                renderMode: full ? .page(pageOptions) : .pageSummary,
                 startDaemon: true,
                 daemonIdleTimeout: nil
             )
 
         case "page":
+            let pageOptions = parsePageOutputOptions(&arguments)
+            guard arguments.isEmpty else {
+                throw WPError.message("unknown page option \(arguments[0])")
+            }
             return CLIInvocation(
                 request: WireRequest(command: .page, browser: browser),
-                renderMode: .page,
+                renderMode: .page(pageOptions),
                 startDaemon: true
             )
 
@@ -285,8 +306,9 @@ func render(_ response: WireResponse, mode: RenderMode) throws {
             page: page
         ))
 
-    case .page:
-        try printJSON(try response.page.unwrap("daemon did not return page data"))
+    case .page(let options):
+        let page = try response.page.unwrap("daemon did not return page data")
+        try printJSON(PageOutput(page: page, options: options))
 
     case .interaction:
         let page = try response.page.unwrap("daemon did not return page data")
@@ -320,9 +342,9 @@ func printUsage() {
       wp browser resume <id>
 
       wp open <url>
-      wp open --full <url>
+      wp open --full [--selectors|--action-details] <url>
       wp --browser <id> open <url>
-      wp -b <id> page
+      wp -b <id> page [--selectors|--action-details]
       wp -b <id> click <action-number>
       wp -b <id> fill <action-number> <text>
       wp -b <id> submit <action-number>
@@ -338,7 +360,7 @@ func printUsage() {
     Notes:
       - Commands auto-start a local daemon, except daemon status/stop.
       - 'wp open <url>' creates a browser, opens the page, and prints a compact summary.
-      - Use 'wp open --full <url>' or 'wp -b <id> page' to print full page snapshots.
+      - Use '--selectors' to show action CSS selectors and '--action-details' for raw action metadata.
       - JSON output is compact and omits false, empty, and null fields.
     """)
 }
@@ -365,6 +387,63 @@ private struct PageSummaryOutput: Encodable {
         loading = page?.loading ?? false
         progress = page?.progress
         actions = page.map { $0.actions.count }
+    }
+}
+
+private struct PageOutput: Encodable {
+    let browser: String
+    let title: String?
+    let url: String?
+    let loading: Bool
+    let progress: Double
+    let text: String?
+    let actions: [PageActionOutput]
+
+    init(page: PageSnapshot, options: PageOutputOptions) {
+        browser = page.browser
+        title = page.title.nilIfEmpty
+        url = page.url
+        loading = page.loading
+        progress = page.progress
+        text = page.text.nilIfEmpty
+        actions = page.actions.map { PageActionOutput(action: $0, options: options) }
+    }
+}
+
+private struct PageActionOutput: Encodable {
+    let id: String?
+    let index: Int?
+    let kind: String
+    let tag: String?
+    let type: String?
+    let text: String
+    let href: String?
+    let disabled: Bool
+    let selector: String?
+
+    init(action: BrowserAction, options: PageOutputOptions) {
+        id = options.includeActionDetails ? action.id : nil
+        index = options.includeActionDetails ? action.index : nil
+        kind = action.outputKind
+        tag = options.includeActionDetails ? action.tag : nil
+        type = options.includeActionDetails ? action.type.nilIfEmpty : nil
+        text = action.text
+        href = action.href.nilIfEmpty
+        disabled = action.disabled
+        selector = (options.includeActionSelectors || options.includeActionDetails) ? action.selector : nil
+    }
+}
+
+private extension BrowserAction {
+    var outputKind: String {
+        switch kind {
+        case "click":
+            return href.nilIfEmpty == nil ? "button" : "link"
+        case "select":
+            return "selector"
+        default:
+            return kind
+        }
     }
 }
 
@@ -403,6 +482,29 @@ private extension Array where Element == String {
         remove(at: index)
         return true
     }
+}
+
+private func parsePageOutputOptions(_ arguments: inout [String]) -> PageOutputOptions {
+    var options = PageOutputOptions()
+    var index = 0
+
+    while index < arguments.count {
+        switch arguments[index] {
+        case "--selectors", "--selector":
+            options.includeActionSelectors = true
+            arguments.remove(at: index)
+
+        case "--action-details", "--details", "--verbose":
+            options.includeActionDetails = true
+            options.includeActionSelectors = true
+            arguments.remove(at: index)
+
+        default:
+            index += 1
+        }
+    }
+
+    return options
 }
 
 private func parseIdleTimeoutOption(_ arguments: inout [String]) throws -> TimeInterval? {
