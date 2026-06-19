@@ -69,11 +69,14 @@ struct SessionStore: Sendable {
             return []
         }
 
-        return files.map { $0.deletingPathExtension().lastPathComponent }
+        return files
+            .map { $0.deletingPathExtension().lastPathComponent }
+            .filter(Self.isValidBrowserID)
     }
 
     func dumps() throws -> [BrowserDump] {
         try sessionFiles()
+            .filter { Self.isValidBrowserID($0.deletingPathExtension().lastPathComponent) }
             .map { try load(from: $0) }
             .sorted { $0.browser.localizedStandardCompare($1.browser) == .orderedAscending }
     }
@@ -111,7 +114,15 @@ struct SessionStore: Sendable {
 
     private func load(from url: URL) throws -> BrowserDump {
         let data = try Data(contentsOf: url)
-        return try JSONDecoder().decode(BrowserDump.self, from: data)
+        let dump = try JSONDecoder().decode(BrowserDump.self, from: data)
+        guard Self.isValidBrowserID(dump.browser) else {
+            throw WPError.message("invalid browser id \(dump.browser)")
+        }
+        let fileBrowser = url.deletingPathExtension().lastPathComponent
+        guard dump.browser == fileBrowser else {
+            throw WPError.message("browser id mismatch in session \(fileBrowser)")
+        }
+        return dump
     }
 
     private func sessionFiles() throws -> [URL] {
@@ -126,11 +137,21 @@ struct SessionStore: Sendable {
     }
 
     private func fileURL(for browser: String) throws -> URL {
-        let allowed = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_")
-        guard !browser.isEmpty, browser.unicodeScalars.allSatisfy(allowed.contains) else {
+        guard Self.isValidBrowserID(browser) else {
             throw WPError.message("invalid browser id \(browser)")
         }
         return directory.appendingPathComponent(browser).appendingPathExtension("json")
+    }
+
+    private static func isValidBrowserID(_ browser: String) -> Bool {
+        let bytes = browser.utf8
+        guard bytes.count == 8 else {
+            return false
+        }
+
+        return bytes.allSatisfy { byte in
+            (byte >= 48 && byte <= 57) || (byte >= 97 && byte <= 102)
+        }
     }
 }
 
