@@ -43,7 +43,7 @@ private struct WP {
 
         default:
             let request = try invocation.request.unwrap("missing daemon request")
-            let client = DaemonClient()
+            let client = DaemonClient(idleTimeout: invocation.daemonIdleTimeout)
             let response: WireResponse
             do {
                 response = try client.send(request, startIfNeeded: invocation.startDaemon)

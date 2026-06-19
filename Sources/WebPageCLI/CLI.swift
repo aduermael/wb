@@ -4,13 +4,29 @@ struct CLIInvocation {
     let request: WireRequest?
     let renderMode: RenderMode
     let startDaemon: Bool
+    let daemonIdleTimeout: TimeInterval?
+
+    init(
+        request: WireRequest?,
+        renderMode: RenderMode,
+        startDaemon: Bool,
+        daemonIdleTimeout: TimeInterval? = nil
+    ) {
+        self.request = request
+        self.renderMode = renderMode
+        self.startDaemon = startDaemon
+        self.daemonIdleTimeout = daemonIdleTimeout
+    }
 }
 
 enum RenderMode {
     case help
     case daemonStatus
+    case daemonStart
     case browserID
     case browsers
+    case browserMessage
+    case pageSummary
     case page
     case interaction
     case value
@@ -64,11 +80,13 @@ struct CLIParser {
             return try parseDaemonCommand(arguments)
 
         case "open", "go":
+            let full = arguments.removeFlag("--full")
             let url = try arguments.popFirst("usage: wp open <url>")
             return CLIInvocation(
                 request: WireRequest(command: .open, browser: browser, url: url),
-                renderMode: .page,
-                startDaemon: true
+                renderMode: full ? .page : .pageSummary,
+                startDaemon: true,
+                daemonIdleTimeout: nil
             )
 
         case "page":
@@ -147,14 +165,16 @@ struct CLIParser {
             return CLIInvocation(
                 request: WireRequest(command: .browserCreate),
                 renderMode: .browserID,
-                startDaemon: true
+                startDaemon: true,
+                daemonIdleTimeout: nil
             )
 
         case "list", "ls":
             return CLIInvocation(
                 request: WireRequest(command: .browserList),
                 renderMode: .browsers,
-                startDaemon: true
+                startDaemon: true,
+                daemonIdleTimeout: nil
             )
 
         case "close", "delete", "rm":
@@ -162,7 +182,26 @@ struct CLIParser {
             return CLIInvocation(
                 request: WireRequest(command: .browserClose, browser: id),
                 renderMode: .message,
-                startDaemon: true
+                startDaemon: true,
+                daemonIdleTimeout: nil
+            )
+
+        case "dump":
+            let id = arguments.first ?? browser
+            return CLIInvocation(
+                request: WireRequest(command: .browserDump, browser: id),
+                renderMode: .browserMessage,
+                startDaemon: true,
+                daemonIdleTimeout: nil
+            )
+
+        case "resume":
+            let id = arguments.first ?? browser
+            return CLIInvocation(
+                request: WireRequest(command: .browserResume, browser: id),
+                renderMode: .pageSummary,
+                startDaemon: true,
+                daemonIdleTimeout: nil
             )
 
         default:
@@ -172,18 +211,37 @@ struct CLIParser {
 
     private static func parseDaemonCommand(_ arguments: [String]) throws -> CLIInvocation {
         guard let command = arguments.first else {
-            throw WPError.message("usage: wp daemon <status|stop>")
+            throw WPError.message("usage: wp daemon <start|status|stop>")
         }
 
         switch command {
+        case "start":
+            var arguments = Array(arguments.dropFirst())
+            let idleTimeout = try parseIdleTimeoutOption(&arguments)
+            guard arguments.isEmpty else {
+                throw WPError.message("unknown daemon start option \(arguments[0])")
+            }
+            return CLIInvocation(
+                request: WireRequest(command: .ping),
+                renderMode: .daemonStart,
+                startDaemon: true,
+                daemonIdleTimeout: idleTimeout
+            )
+
         case "status":
-            return CLIInvocation(request: nil, renderMode: .daemonStatus, startDaemon: false)
+            return CLIInvocation(
+                request: nil,
+                renderMode: .daemonStatus,
+                startDaemon: false,
+                daemonIdleTimeout: nil
+            )
 
         case "stop":
             return CLIInvocation(
                 request: WireRequest(command: .daemonStop),
                 renderMode: .message,
-                startDaemon: false
+                startDaemon: false,
+                daemonIdleTimeout: nil
             )
 
         default:
@@ -204,20 +262,38 @@ func render(_ response: WireResponse, mode: RenderMode) throws {
     case .daemonStatus:
         break
 
+    case .daemonStart:
+        print("running")
+
     case .browserID:
         print(try response.browser.unwrap("daemon did not return a browser id"))
 
     case .browsers:
         try printJSON(response.browsers ?? [])
 
+    case .browserMessage:
+        try printJSON(BrowserMessageOutput(
+            browser: response.browser,
+            message: response.message
+        ))
+
+    case .pageSummary:
+        let page = try response.page.unwrap("daemon did not return page data")
+        try printJSON(PageSummaryOutput(
+            browser: response.browser,
+            message: response.message,
+            page: page
+        ))
+
     case .page:
         try printJSON(try response.page.unwrap("daemon did not return page data"))
 
     case .interaction:
-        try printJSON(InteractionOutput(
+        let page = try response.page.unwrap("daemon did not return page data")
+        try printJSON(PageSummaryOutput(
             browser: response.browser,
             message: response.message,
-            page: response.page
+            page: page
         ))
 
     case .value:
@@ -240,8 +316,11 @@ func printUsage() {
       wp browser create
       wp browser list
       wp browser close <id>
+      wp browser dump <id>
+      wp browser resume <id>
 
       wp open <url>
+      wp open --full <url>
       wp --browser <id> open <url>
       wp -b <id> page
       wp -b <id> click <action-number>
@@ -252,20 +331,41 @@ func printUsage() {
       wp -b <id> text [css-selector]
       wp -b <id> html [css-selector]
 
+      wp daemon start [--idle-timeout <seconds|off>]
       wp daemon status
       wp daemon stop
 
     Notes:
       - Commands auto-start a local daemon, except daemon status/stop.
-      - 'wp open <url>' creates a new browser, opens the page, and prints page JSON.
-      - 'wp -b <id> page' refreshes actions and prints page JSON.
+      - 'wp open <url>' creates a browser, opens the page, and prints a compact summary.
+      - Use 'wp open --full <url>' or 'wp -b <id> page' to print full page snapshots.
+      - JSON output is compact and omits false, empty, and null fields.
     """)
 }
 
-private struct InteractionOutput: Encodable {
+private struct BrowserMessageOutput: Encodable {
     let browser: String?
     let message: String?
-    let page: PageSnapshot?
+}
+
+private struct PageSummaryOutput: Encodable {
+    let browser: String?
+    let message: String?
+    let title: String?
+    let url: String?
+    let loading: Bool
+    let progress: Double?
+    let actions: Int?
+
+    init(browser: String?, message: String?, page: PageSnapshot?) {
+        self.browser = browser ?? page?.browser
+        self.message = message
+        title = page.flatMap { $0.title.nilIfEmpty }
+        url = page.flatMap { $0.url }
+        loading = page?.loading ?? false
+        progress = page?.progress
+        actions = page.map { $0.actions.count }
+    }
 }
 
 private extension Array where Element == String {
@@ -295,4 +395,39 @@ private extension Array where Element == String {
     func joinedOrNil() -> String? {
         joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
     }
+
+    mutating func removeFlag(_ flag: String) -> Bool {
+        guard let index = firstIndex(of: flag) else {
+            return false
+        }
+        remove(at: index)
+        return true
+    }
+}
+
+private func parseIdleTimeoutOption(_ arguments: inout [String]) throws -> TimeInterval? {
+    var idleTimeout: TimeInterval?
+    var remaining: [String] = []
+
+    while !arguments.isEmpty {
+        let argument = arguments.removeFirst()
+        let rawValue: String
+
+        if argument == "--idle-timeout" {
+            rawValue = try arguments.popFirst("missing value after --idle-timeout")
+        } else if argument.hasPrefix("--idle-timeout=") {
+            rawValue = String(argument.dropFirst("--idle-timeout=".count))
+        } else {
+            remaining.append(argument)
+            continue
+        }
+
+        guard let parsed = WPConfig.parseIdleTimeout(rawValue) else {
+            throw WPError.message("invalid idle timeout \(rawValue)")
+        }
+        idleTimeout = parsed
+    }
+
+    arguments = remaining
+    return idleTimeout
 }

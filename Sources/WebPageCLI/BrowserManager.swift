@@ -6,8 +6,17 @@ import WebKit
 @available(macOS 26.0, *)
 @MainActor
 final class BrowserManager: @unchecked Sendable {
+    private let sessionStore: SessionStore
     private var browsers: [String: BrowserInstance] = [:]
     private var nextID = 1000
+
+    init(config: WPConfig = .current()) {
+        sessionStore = SessionStore(directory: config.sessionsDirectory)
+        let maxDumpedID = sessionStore.browserIDs().compactMap(Int.init).max()
+        if let maxDumpedID {
+            nextID = max(1000, maxDumpedID + 1)
+        }
+    }
 
     func handleWireData(_ data: Data) async -> Data {
         do {
@@ -29,68 +38,101 @@ final class BrowserManager: @unchecked Sendable {
             return .success(browser: browser.id)
 
         case .browserList:
-            return .success(browsers: summaries())
+            return .success(browsers: try summaries())
 
         case .browserClose:
             let id = try request.requiredBrowserID()
-            guard browsers.removeValue(forKey: id) != nil else {
+            let removedActive = browsers.removeValue(forKey: id) != nil
+            let removedDump = sessionStore.exists(id)
+            if removedDump {
+                try sessionStore.delete(id)
+            }
+
+            guard removedActive || removedDump else {
                 throw WPError.message("unknown browser \(id)")
             }
             return .success(browser: id, message: "closed")
 
+        case .browserDump:
+            let id = try request.requiredBrowserID()
+            if let browser = browsers[id] {
+                _ = try await dump(browser)
+                return .success(browser: id, message: "dumped")
+            }
+
+            guard sessionStore.exists(id) else {
+                throw WPError.message("unknown browser \(id)")
+            }
+            _ = try sessionStore.load(id)
+            return .success(browser: id, message: "already dumped")
+
+        case .browserResume:
+            let browser = try await requireBrowser(request.browser)
+            let page = try await browser.snapshot()
+            return .success(browser: browser.id, page: page, message: "resumed")
+
         case .open:
-            let browser = try browserOrCreate(id: request.browser)
             let url = try request.requiredURL()
-            let page = try await browser.open(url)
-            return .success(browser: browser.id, page: page)
+            let browserState = try browserForOpen(id: request.browser)
+            let page: PageSnapshot
+            do {
+                page = try await browserState.browser.open(url)
+            } catch {
+                if browserState.removeOnFailure {
+                    browsers.removeValue(forKey: browserState.browser.id)
+                }
+                throw error
+            }
+            return .success(browser: browserState.browser.id, page: page)
 
         case .page:
-            let browser = try requireBrowser(request.browser)
+            let browser = try await requireBrowser(request.browser)
             let page = try await browser.snapshot()
             return .success(browser: browser.id, page: page)
 
         case .click:
-            let browser = try requireBrowser(request.browser)
+            let browser = try await requireBrowser(request.browser)
             let index = try request.requiredIndex()
             let result = try await browser.click(index)
             return .success(browser: browser.id, page: result.page, message: result.message)
 
         case .fill:
-            let browser = try requireBrowser(request.browser)
+            let browser = try await requireBrowser(request.browser)
             let index = try request.requiredIndex()
             let value = try request.requiredValue()
             let result = try await browser.fill(index, value: value)
             return .success(browser: browser.id, page: result.page, message: result.message)
 
         case .submit:
-            let browser = try requireBrowser(request.browser)
+            let browser = try await requireBrowser(request.browser)
             let index = try request.requiredIndex()
             let result = try await browser.submit(index)
             return .success(browser: browser.id, page: result.page, message: result.message)
 
         case .eval:
-            let browser = try requireBrowser(request.browser)
+            let browser = try await requireBrowser(request.browser)
             let script = try request.requiredScript()
             let value = try await browser.evaluateExpression(script)
             return .success(browser: browser.id, value: value)
 
         case .js:
-            let browser = try requireBrowser(request.browser)
+            let browser = try await requireBrowser(request.browser)
             let script = try request.requiredScript()
             let value = try await browser.callFunctionBody(script)
             return .success(browser: browser.id, value: value)
 
         case .text:
-            let browser = try requireBrowser(request.browser)
+            let browser = try await requireBrowser(request.browser)
             let text = try await browser.text(selector: request.selector)
             return .success(browser: browser.id, text: text)
 
         case .html:
-            let browser = try requireBrowser(request.browser)
+            let browser = try await requireBrowser(request.browser)
             let html = try await browser.html(selector: request.selector)
             return .success(browser: browser.id, html: html)
 
         case .daemonStop:
+            try await dumpAllSessions()
             DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.2) {
                 Darwin.exit(0)
             }
@@ -98,38 +140,123 @@ final class BrowserManager: @unchecked Sendable {
         }
     }
 
-    private func createBrowser() -> BrowserInstance {
-        let id = String(nextID)
-        nextID += 1
+    func dumpAllSessions() async throws {
+        for browser in Array(browsers.values) {
+            guard browsers[browser.id] != nil else {
+                continue
+            }
+            _ = try await dump(browser)
+        }
+    }
 
-        let browser = BrowserInstance(id: id)
+    private func createBrowser(id requestedID: String? = nil, createdAt: Date = Date(), updatedAt: Date = Date()) -> BrowserInstance {
+        let id = requestedID ?? nextBrowserID()
+
+        if let numericID = Int(id) {
+            nextID = max(nextID, numericID + 1)
+        }
+
+        let browser = BrowserInstance(id: id, createdAt: createdAt, updatedAt: updatedAt)
         browsers[id] = browser
         return browser
     }
 
-    private func browserOrCreate(id: String?) throws -> BrowserInstance {
-        if let id {
-            return try requireBrowser(id)
+    private func nextBrowserID() -> String {
+        while browsers[String(nextID)] != nil || sessionStore.exists(String(nextID)) {
+            nextID += 1
         }
-        return createBrowser()
+
+        let id = String(nextID)
+        nextID += 1
+        return id
     }
 
-    private func requireBrowser(_ id: String?) throws -> BrowserInstance {
-        let id = try id.nilIfEmpty.unwrap("missing browser id; pass --browser <id> or -b <id>")
-        return try requireBrowser(id)
-    }
+    private func browserForOpen(id: String?) throws -> (browser: BrowserInstance, removeOnFailure: Bool) {
+        guard let id else {
+            return (createBrowser(), true)
+        }
 
-    private func requireBrowser(_ id: String) throws -> BrowserInstance {
-        guard let browser = browsers[id] else {
+        if let browser = browsers[id] {
+            return (browser, false)
+        }
+
+        guard sessionStore.exists(id) else {
             throw WPError.message("unknown browser \(id)")
         }
-        return browser
+
+        let dump = try sessionStore.load(id)
+        let browser = createBrowser(
+            id: dump.browser,
+            createdAt: dump.createdDate,
+            updatedAt: dump.updatedDate
+        )
+        return (browser, true)
     }
 
-    private func summaries() -> [BrowserSummary] {
-        browsers.values
-            .sorted { $0.id.localizedStandardCompare($1.id) == .orderedAscending }
-            .map { $0.summary() }
+    private func requireBrowser(_ id: String?) async throws -> BrowserInstance {
+        let id = try id.nilIfEmpty.unwrap("missing browser id; pass --browser <id> or -b <id>")
+        return try await requireBrowser(id)
+    }
+
+    private func requireBrowser(_ id: String) async throws -> BrowserInstance {
+        if let browser = browsers[id] {
+            return browser
+        }
+
+        guard sessionStore.exists(id) else {
+            throw WPError.message("unknown browser \(id)")
+        }
+
+        let dump = try sessionStore.load(id)
+        return try await resume(dump)
+    }
+
+    private func summaries() throws -> [BrowserSummary] {
+        var summariesByID: [String: BrowserSummary] = [:]
+
+        for dump in try sessionStore.dumps() {
+            summariesByID[dump.browser] = dump.summary()
+        }
+
+        for browser in browsers.values {
+            summariesByID[browser.id] = browser.summary()
+        }
+
+        return summariesByID.values.sorted {
+            $0.browser.localizedStandardCompare($1.browser) == .orderedAscending
+        }
+    }
+
+    private func dump(_ browser: BrowserInstance) async throws -> BrowserDump {
+        let dump = await browser.dump()
+        try sessionStore.save(dump)
+        return dump
+    }
+
+    private func resume(_ dump: BrowserDump) async throws -> BrowserInstance {
+        if let browser = browsers[dump.browser] {
+            return browser
+        }
+
+        let browser = createBrowser(
+            id: dump.browser,
+            createdAt: dump.createdDate,
+            updatedAt: dump.updatedDate
+        )
+
+        let resumeURL = dump.url ?? dump.snapshot.flatMap { $0.url }
+        guard let rawURL = resumeURL.nilIfEmpty,
+              let url = URL(string: rawURL) else {
+            return browser
+        }
+
+        do {
+            _ = try await browser.open(url)
+            return browser
+        } catch {
+            browsers.removeValue(forKey: dump.browser)
+            throw error
+        }
     }
 }
 
@@ -140,11 +267,13 @@ private final class BrowserInstance {
 
     private let page = WebPage()
     private var actions: [BrowserAction] = []
-    private let createdAt = Date()
-    private var updatedAt = Date()
+    private let createdAt: Date
+    private var updatedAt: Date
 
-    init(id: String) {
+    init(id: String, createdAt: Date = Date(), updatedAt: Date = Date()) {
         self.id = id
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
     }
 
     func open(_ url: URL) async throws -> PageSnapshot {
@@ -247,7 +376,33 @@ private final class BrowserInstance {
             progress: page.estimatedProgress,
             actions: actions.count,
             createdAt: createdAt.iso8601String,
-            updatedAt: updatedAt.iso8601String
+            updatedAt: updatedAt.iso8601String,
+            dumped: nil,
+            dumpedAt: nil
+        )
+    }
+
+    func dump() async -> BrowserDump {
+        let currentSnapshot: PageSnapshot?
+        if page.url == nil {
+            currentSnapshot = nil
+        } else {
+            currentSnapshot = try? await snapshot()
+        }
+        let snapshotURL = currentSnapshot.flatMap { $0.url }
+
+        return BrowserDump(
+            schemaVersion: 1,
+            browser: id,
+            title: (currentSnapshot?.title ?? page.title).nilIfEmpty,
+            url: snapshotURL ?? page.url?.absoluteString,
+            loading: currentSnapshot?.loading ?? page.isLoading,
+            progress: currentSnapshot?.progress ?? page.estimatedProgress,
+            actions: currentSnapshot?.actions.count ?? actions.count,
+            createdAt: createdAt.iso8601String,
+            updatedAt: updatedAt.iso8601String,
+            dumpedAt: Date().iso8601String,
+            snapshot: currentSnapshot
         )
     }
 
@@ -288,7 +443,7 @@ private final class BrowserInstance {
     }
 
     private func settle() async {
-        try? await Task.sleep(nanoseconds: 250_000_000)
+        _ = try? await Task.sleep(nanoseconds: 250_000_000)
 
         let deadline = Date().addingTimeInterval(8)
         while Date() < deadline {
@@ -299,7 +454,7 @@ private final class BrowserInstance {
                 }
             }
 
-            try? await Task.sleep(nanoseconds: 250_000_000)
+            _ = try? await Task.sleep(nanoseconds: 250_000_000)
         }
     }
 

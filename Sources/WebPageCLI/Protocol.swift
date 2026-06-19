@@ -5,6 +5,8 @@ enum WireCommand: String, Codable, Equatable, Sendable {
     case browserCreate
     case browserList
     case browserClose
+    case browserDump
+    case browserResume
     case open
     case page
     case click
@@ -127,6 +129,8 @@ struct BrowserSummary: Codable, Sendable {
     let actions: Int
     let createdAt: String
     let updatedAt: String
+    let dumped: Bool?
+    let dumpedAt: String?
 }
 
 struct PageSnapshot: Codable, Sendable {

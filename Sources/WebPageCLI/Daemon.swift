@@ -4,38 +4,87 @@ import Darwin
 @available(macOS 26.0, *)
 final class DaemonProcess {
     private let socketPath: String
+    private let config: WPConfig
     private var server: UnixSocketServer?
 
-    init(socketPath: String = DaemonClient.defaultSocketPath) {
-        self.socketPath = socketPath
+    init(config: WPConfig = .current()) {
+        self.config = config
+        socketPath = config.socketPath
     }
 
     func run() async throws {
-        let manager = await MainActor.run {
-            BrowserManager()
-        }
+        let config = self.config
+        let socketPath = self.socketPath
         let server = UnixSocketServer(socketPath: socketPath)
         self.server = server
-        try server.start { [manager] data in
+
+        let manager = await MainActor.run {
+            BrowserManager(config: config)
+        }
+        let activity = DaemonActivity()
+        try server.start(activity: activity) { [manager] data in
             await manager.handleWireData(data)
         }
 
         while true {
-            try await Task.sleep(nanoseconds: 3_600_000_000_000)
+            try await Task.sleep(nanoseconds: 1_000_000_000)
+
+            if activity.isIdle(timeout: config.idleTimeout) {
+                do {
+                    try await manager.dumpAllSessions()
+                } catch {
+                    printError("idle dump failed: \(error.localizedDescription)")
+                    continue
+                }
+
+                if activity.isIdle(timeout: config.idleTimeout) {
+                    Darwin.exit(0)
+                }
+            }
         }
+    }
+}
+
+private final class DaemonActivity: @unchecked Sendable {
+    private let lock = NSLock()
+    private var inFlightRequests = 0
+    private var lastActivityAt = Date()
+
+    func beginRequest() {
+        lock.lock()
+        defer { lock.unlock() }
+
+        inFlightRequests += 1
+        lastActivityAt = Date()
+    }
+
+    func endRequest() {
+        lock.lock()
+        defer { lock.unlock() }
+
+        inFlightRequests = max(0, inFlightRequests - 1)
+        lastActivityAt = Date()
+    }
+
+    func isIdle(timeout: TimeInterval, now: Date = Date()) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+
+        return timeout > 0 && inFlightRequests == 0 && now.timeIntervalSince(lastActivityAt) >= timeout
     }
 }
 
 final class DaemonClient {
     static var defaultSocketPath: String {
-        ProcessInfo.processInfo.environment["WP_SOCKET"]
-            ?? "/tmp/wp-webpage-\(Darwin.getuid()).sock"
+        WPConfig.current().socketPath
     }
 
     private let socketPath: String
+    private let idleTimeout: TimeInterval?
 
-    init(socketPath: String = DaemonClient.defaultSocketPath) {
+    init(socketPath: String = DaemonClient.defaultSocketPath, idleTimeout: TimeInterval? = nil) {
         self.socketPath = socketPath
+        self.idleTimeout = idleTimeout
     }
 
     func send(_ request: WireRequest, startIfNeeded: Bool = true) throws -> WireResponse {
@@ -69,6 +118,11 @@ final class DaemonClient {
         let process = Process()
         process.executableURL = executableURL
         process.arguments = ["__daemon"]
+        if let idleTimeout {
+            var environment = ProcessInfo.processInfo.environment
+            environment["WP_IDLE_SECONDS"] = String(idleTimeout)
+            process.environment = environment
+        }
         if let devNull = FileHandle(forReadingAtPath: "/dev/null") {
             process.standardInput = devNull
         }
@@ -76,7 +130,7 @@ final class DaemonClient {
         let logPath = "/tmp/wp-webpage-\(Darwin.getuid()).log"
         _ = FileManager.default.createFile(atPath: logPath, contents: nil)
         if let log = FileHandle(forWritingAtPath: logPath) {
-            try? log.seekToEnd()
+            _ = try? log.seekToEnd()
             process.standardOutput = log
             process.standardError = log
         }
@@ -118,7 +172,10 @@ private final class UnixSocketServer: @unchecked Sendable {
         Darwin.unlink(socketPath)
     }
 
-    func start(handler: @escaping @Sendable (Data) async -> Data) throws {
+    func start(
+        activity: DaemonActivity,
+        handler: @escaping @Sendable (Data) async -> Data
+    ) throws {
         Darwin.signal(SIGPIPE, SIG_IGN)
 
         fd = Darwin.socket(AF_UNIX, SOCK_STREAM, 0)
@@ -143,13 +200,17 @@ private final class UnixSocketServer: @unchecked Sendable {
 
         let serverFD = fd
         thread = Thread {
-            Self.acceptLoop(fd: serverFD, handler: handler)
+            Self.acceptLoop(fd: serverFD, activity: activity, handler: handler)
         }
         thread?.name = "wp-webpage-daemon"
         thread?.start()
     }
 
-    private static func acceptLoop(fd: Int32, handler: @escaping @Sendable (Data) async -> Data) {
+    private static func acceptLoop(
+        fd: Int32,
+        activity: DaemonActivity,
+        handler: @escaping @Sendable (Data) async -> Data
+    ) {
         while true {
             let clientFD = Darwin.accept(fd, nil, nil)
             if clientFD < 0 {
@@ -159,25 +220,31 @@ private final class UnixSocketServer: @unchecked Sendable {
                 printError(WPError.posix("accept").localizedDescription)
                 return
             }
+            activity.beginRequest()
 
             let requestData: Data
             do {
                 requestData = try UnixSocketTransport.readMessage(from: clientFD)
             } catch {
                 let responseData = WireCodec.encodeError(error.localizedDescription)
-                try? UnixSocketTransport.writeMessage(responseData, to: clientFD)
+                _ = try? UnixSocketTransport.writeMessage(responseData, to: clientFD)
                 Darwin.close(clientFD)
+                activity.endRequest()
                 continue
             }
 
             Task {
+                defer {
+                    Darwin.close(clientFD)
+                    activity.endRequest()
+                }
+
                 let responseData = await handler(requestData)
                 do {
                     try UnixSocketTransport.writeMessage(responseData, to: clientFD)
                 } catch {
                     printError(error.localizedDescription)
                 }
-                Darwin.close(clientFD)
             }
         }
     }

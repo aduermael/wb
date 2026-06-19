@@ -1,0 +1,175 @@
+import Foundation
+import Darwin
+
+struct WPConfig: Sendable {
+    static let defaultIdleTimeout: TimeInterval = 180
+
+    let directory: URL
+    let idleTimeout: TimeInterval
+
+    var sessionsDirectory: URL {
+        directory.appendingPathComponent("sessions", isDirectory: true)
+    }
+
+    var socketPath: String {
+        if let override = ProcessInfo.processInfo.environment["WP_SOCKET"].nilIfEmpty {
+            return override
+        }
+
+        return "/tmp/wp-webpage-\(Darwin.getuid())-\(Self.pathHash(directory.path)).sock"
+    }
+
+    static func current(idleTimeout: TimeInterval? = nil) -> WPConfig {
+        let environment = ProcessInfo.processInfo.environment
+        let rawDirectory = environment["WP_DIR"].nilIfEmpty ?? "wp"
+        let baseURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
+        let directory: URL
+        if rawDirectory.hasPrefix("/") {
+            directory = URL(fileURLWithPath: rawDirectory, isDirectory: true)
+        } else {
+            directory = baseURL.appendingPathComponent(rawDirectory, isDirectory: true)
+        }
+
+        return WPConfig(
+            directory: directory.standardizedFileURL,
+            idleTimeout: idleTimeout ?? parseIdleTimeout(environment["WP_IDLE_SECONDS"]) ?? defaultIdleTimeout
+        )
+    }
+
+    static func parseIdleTimeout(_ rawValue: String?) -> TimeInterval? {
+        guard let rawValue = rawValue?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty else {
+            return nil
+        }
+
+        if rawValue.lowercased() == "off" {
+            return 0
+        }
+
+        guard let seconds = TimeInterval(rawValue), seconds >= 0 else {
+            return nil
+        }
+        return seconds
+    }
+
+    private static func pathHash(_ path: String) -> String {
+        var hash: UInt64 = 14_695_981_039_346_656_037
+        for byte in path.utf8 {
+            hash ^= UInt64(byte)
+            hash &*= 1_099_511_628_211
+        }
+        return String(hash, radix: 16)
+    }
+}
+
+struct SessionStore: Sendable {
+    let directory: URL
+
+    func browserIDs() -> [String] {
+        guard let files = try? sessionFiles() else {
+            return []
+        }
+
+        return files.map { $0.deletingPathExtension().lastPathComponent }
+    }
+
+    func dumps() throws -> [BrowserDump] {
+        try sessionFiles()
+            .map { try load(from: $0) }
+            .sorted { $0.browser.localizedStandardCompare($1.browser) == .orderedAscending }
+    }
+
+    func exists(_ browser: String) -> Bool {
+        guard let fileURL = try? fileURL(for: browser) else {
+            return false
+        }
+        return FileManager.default.fileExists(atPath: fileURL.path)
+    }
+
+    func load(_ browser: String) throws -> BrowserDump {
+        try load(from: fileURL(for: browser))
+    }
+
+    func save(_ dump: BrowserDump) throws {
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true
+        )
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let data = try encoder.encode(dump)
+        try data.write(to: fileURL(for: dump.browser), options: [.atomic])
+    }
+
+    func delete(_ browser: String) throws {
+        let url = try fileURL(for: browser)
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            return
+        }
+        try FileManager.default.removeItem(at: url)
+    }
+
+    private func load(from url: URL) throws -> BrowserDump {
+        let data = try Data(contentsOf: url)
+        return try JSONDecoder().decode(BrowserDump.self, from: data)
+    }
+
+    private func sessionFiles() throws -> [URL] {
+        guard FileManager.default.fileExists(atPath: directory.path) else {
+            return []
+        }
+
+        return try FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: nil
+        ).filter { $0.pathExtension == "json" }
+    }
+
+    private func fileURL(for browser: String) throws -> URL {
+        let allowed = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_")
+        guard !browser.isEmpty, browser.unicodeScalars.allSatisfy(allowed.contains) else {
+            throw WPError.message("invalid browser id \(browser)")
+        }
+        return directory.appendingPathComponent(browser).appendingPathExtension("json")
+    }
+}
+
+struct BrowserDump: Codable, Sendable {
+    let schemaVersion: Int
+    let browser: String
+    let title: String?
+    let url: String?
+    let loading: Bool
+    let progress: Double
+    let actions: Int
+    let createdAt: String
+    let updatedAt: String
+    let dumpedAt: String
+    let snapshot: PageSnapshot?
+
+    func summary() -> BrowserSummary {
+        let snapshotTitle = snapshot.flatMap { $0.title.nilIfEmpty }
+        let snapshotURL = snapshot.flatMap { $0.url }
+
+        return BrowserSummary(
+            browser: browser,
+            title: title ?? snapshotTitle,
+            url: url ?? snapshotURL,
+            loading: loading,
+            progress: progress,
+            actions: snapshot?.actions.count ?? actions,
+            createdAt: createdAt,
+            updatedAt: updatedAt,
+            dumped: true,
+            dumpedAt: dumpedAt
+        )
+    }
+
+    var createdDate: Date {
+        createdAt.iso8601Date ?? Date()
+    }
+
+    var updatedDate: Date {
+        updatedAt.iso8601Date ?? createdDate
+    }
+}
