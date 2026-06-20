@@ -1,7 +1,7 @@
 import Foundation
 
 enum WireProtocol {
-    static let version = 25
+    static let version = 26
 }
 
 enum WireCommand: String, Codable, Equatable, Sendable {
@@ -18,6 +18,8 @@ enum WireCommand: String, Codable, Equatable, Sendable {
     case fill
     case submit
     case eval
+    case screenshot
+    case coordinate
     case daemonStop
 }
 
@@ -30,6 +32,12 @@ struct WireRequest: Codable, Sendable {
     var action: String?
     var index: Int?
     var value: String?
+    var destinationPath: String?
+    var coordinateAction: String?
+    var x: Double?
+    var y: Double?
+    var deltaX: Double?
+    var deltaY: Double?
 
     init(
         command: WireCommand,
@@ -39,7 +47,13 @@ struct WireRequest: Codable, Sendable {
         functionBody: Bool? = nil,
         action: String? = nil,
         index: Int? = nil,
-        value: String? = nil
+        value: String? = nil,
+        destinationPath: String? = nil,
+        coordinateAction: String? = nil,
+        x: Double? = nil,
+        y: Double? = nil,
+        deltaX: Double? = nil,
+        deltaY: Double? = nil
     ) {
         self.command = command
         self.browser = browser
@@ -49,6 +63,12 @@ struct WireRequest: Codable, Sendable {
         self.action = action
         self.index = index
         self.value = value
+        self.destinationPath = destinationPath
+        self.coordinateAction = coordinateAction
+        self.x = x
+        self.y = y
+        self.deltaX = deltaX
+        self.deltaY = deltaY
     }
 
     func requiredBrowserID() throws -> String {
@@ -80,6 +100,30 @@ struct WireRequest: Codable, Sendable {
 
     func requiredValue() throws -> String {
         try value.unwrap("missing value")
+    }
+
+    func requiredDestinationPath() throws -> String {
+        try destinationPath.nilIfEmpty.unwrap("missing destination path")
+    }
+
+    func requiredCoordinateAction() throws -> String {
+        try coordinateAction.nilIfEmpty.unwrap("missing coordinate action")
+    }
+
+    func requiredX() throws -> Double {
+        try x.unwrap("missing x coordinate")
+    }
+
+    func requiredY() throws -> Double {
+        try y.unwrap("missing y coordinate")
+    }
+
+    func requiredDeltaX() throws -> Double {
+        try deltaX.unwrap("missing x scroll delta")
+    }
+
+    func requiredDeltaY() throws -> Double {
+        try deltaY.unwrap("missing y scroll delta")
     }
 }
 

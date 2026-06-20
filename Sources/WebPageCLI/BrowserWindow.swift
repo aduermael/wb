@@ -168,6 +168,12 @@ private func rectDebugDescription(_ rect: NSRect) -> String {
     )
 }
 
+private enum BrowserWindowMetrics {
+    static let defaultSize = NSSize(width: 1280, height: 900)
+    static let minimumSize = NSSize(width: 800, height: 600)
+    static let screenPadding: CGFloat = 40
+}
+
 @available(macOS 26.0, *)
 @MainActor
 private final class BrowserPanel: NSPanel {
@@ -256,7 +262,7 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
 
     private func makeWindow() -> NSWindow {
         let window = BrowserPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 960, height: 700),
+            contentRect: NSRect(origin: .zero, size: BrowserWindowMetrics.defaultSize),
             styleMask: [
                 .titled,
                 .closable,
@@ -268,7 +274,7 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
             defer: false
         )
         window.title = "wb \(browserID)"
-        window.minSize = NSSize(width: 420, height: 300)
+        window.minSize = BrowserWindowMetrics.minimumSize
         window.level = .floating
         window.collectionBehavior = Self.previewCollectionBehavior
         window.isFloatingPanel = true
@@ -301,8 +307,10 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
         }
 
         let visibleFrame = screen.visibleFrame
-        let width = min(max(420, window.frame.width), max(420, visibleFrame.width - 40))
-        let height = min(max(300, window.frame.height), max(300, visibleFrame.height - 40))
+        let maxWidth = max(BrowserWindowMetrics.minimumSize.width, visibleFrame.width - BrowserWindowMetrics.screenPadding)
+        let maxHeight = max(BrowserWindowMetrics.minimumSize.height, visibleFrame.height - BrowserWindowMetrics.screenPadding)
+        let width = min(max(BrowserWindowMetrics.minimumSize.width, window.frame.width), maxWidth)
+        let height = min(max(BrowserWindowMetrics.minimumSize.height, window.frame.height), maxHeight)
         let frame = NSRect(
             x: visibleFrame.midX - width / 2,
             y: visibleFrame.midY - height / 2,
@@ -366,7 +374,10 @@ private struct BrowserWindowView: View {
             WebView(page)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(minWidth: 420, minHeight: 300)
+        .frame(
+            minWidth: BrowserWindowMetrics.minimumSize.width,
+            minHeight: BrowserWindowMetrics.minimumSize.height
+        )
         .onAppear {
             syncAddress()
         }

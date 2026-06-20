@@ -43,8 +43,13 @@ enum HelpTopic {
     case dump
     case show
     case hide
+    case screenshot
     case page
     case click
+    case press
+    case drag
+    case release
+    case scroll
     case fill
     case submit
     case eval
@@ -183,6 +188,29 @@ struct CLIParser {
                 daemonIdleTimeout: nil
             )
 
+        case "screenshot":
+            if arguments.containsHelpFlag {
+                return help(.screenshot)
+            }
+            let id = try popBrowserID(
+                from: &arguments,
+                usage: "usage: wb screenshot <id> <destination.png|destination.jpg>"
+            )
+            let destination = try arguments.popFirst("usage: wb screenshot <id> <destination.png|destination.jpg>")
+            guard arguments.isEmpty else {
+                throw WBError.message("unexpected screenshot argument \(arguments[0])")
+            }
+            try validateScreenshotDestination(destination)
+            return CLIInvocation(
+                request: WireRequest(
+                    command: .screenshot,
+                    browser: id,
+                    destinationPath: absolutePath(for: destination)
+                ),
+                renderMode: .message,
+                startDaemon: true
+            )
+
         case "daemon":
             return try parseDaemonCommand(arguments)
 
@@ -211,14 +239,79 @@ struct CLIParser {
             }
             let id = try popBrowserID(
                 from: &arguments,
-                usage: "usage: wb click <id> <action>"
+                usage: "usage: wb click <id> <action>\n       wb click <id> <x> <y>"
             )
+            if arguments.count == 2 {
+                let x = try arguments[0].parsedDouble("expected x coordinate, got \(arguments[0])")
+                let y = try arguments[1].parsedDouble("expected y coordinate, got \(arguments[1])")
+                return CLIInvocation(
+                    request: WireRequest(
+                        command: .coordinate,
+                        browser: id,
+                        coordinateAction: "click",
+                        x: x,
+                        y: y
+                    ),
+                    renderMode: .interaction,
+                    startDaemon: true
+                )
+            }
             let action = try arguments.popFirst("usage: wb click <id> <action>")
             guard arguments.isEmpty else {
                 throw WBError.message("unexpected click argument \(arguments[0])")
             }
             return CLIInvocation(
                 request: WireRequest(command: .click, browser: id, action: action, index: Int(action)),
+                renderMode: .interaction,
+                startDaemon: true
+            )
+
+        case "press":
+            return try parseCoordinatePointCommand(
+                name: "press",
+                helpTopic: .press,
+                arguments: arguments
+            )
+
+        case "drag":
+            return try parseCoordinatePointCommand(
+                name: "drag",
+                helpTopic: .drag,
+                arguments: arguments
+            )
+
+        case "release":
+            return try parseCoordinatePointCommand(
+                name: "release",
+                helpTopic: .release,
+                arguments: arguments
+            )
+
+        case "scroll":
+            if arguments.containsHelpFlag {
+                return help(.scroll)
+            }
+            let id = try popBrowserID(
+                from: &arguments,
+                usage: "usage: wb scroll <id> <x> <y> <deltaX> <deltaY>"
+            )
+            let x = try arguments.popDouble("usage: wb scroll <id> <x> <y> <deltaX> <deltaY>")
+            let y = try arguments.popDouble("usage: wb scroll <id> <x> <y> <deltaX> <deltaY>")
+            let deltaX = try arguments.popDouble("usage: wb scroll <id> <x> <y> <deltaX> <deltaY>")
+            let deltaY = try arguments.popDouble("usage: wb scroll <id> <x> <y> <deltaX> <deltaY>")
+            guard arguments.isEmpty else {
+                throw WBError.message("unexpected scroll argument \(arguments[0])")
+            }
+            return CLIInvocation(
+                request: WireRequest(
+                    command: .coordinate,
+                    browser: id,
+                    coordinateAction: "scroll",
+                    x: x,
+                    y: y,
+                    deltaX: deltaX,
+                    deltaY: deltaY
+                ),
                 renderMode: .interaction,
                 startDaemon: true
             )
@@ -356,10 +449,20 @@ struct CLIParser {
             return help(.show)
         case "hide":
             return help(.hide)
+        case "screenshot":
+            return help(.screenshot)
         case "page":
             return help(.page)
         case "click":
             return help(.click)
+        case "press":
+            return help(.press)
+        case "drag":
+            return help(.drag)
+        case "release":
+            return help(.release)
+        case "scroll":
+            return help(.scroll)
         case "fill":
             return help(.fill)
         case "submit":
@@ -376,6 +479,63 @@ struct CLIParser {
         usage: String
     ) throws -> String {
         return try arguments.popFirst(usage)
+    }
+
+    private static func parseCoordinatePointCommand(
+        name: String,
+        helpTopic: HelpTopic,
+        arguments: [String]
+    ) throws -> CLIInvocation {
+        var arguments = arguments
+        if arguments.containsHelpFlag {
+            return help(helpTopic)
+        }
+        let id = try popBrowserID(
+            from: &arguments,
+            usage: "usage: wb \(name) <id> <x> <y>"
+        )
+        let x = try arguments.popDouble("usage: wb \(name) <id> <x> <y>")
+        let y = try arguments.popDouble("usage: wb \(name) <id> <x> <y>")
+        guard arguments.isEmpty else {
+            throw WBError.message("unexpected \(name) argument \(arguments[0])")
+        }
+        return CLIInvocation(
+            request: WireRequest(
+                command: .coordinate,
+                browser: id,
+                coordinateAction: name,
+                x: x,
+                y: y
+            ),
+            renderMode: .interaction,
+            startDaemon: true
+        )
+    }
+
+    private static func validateScreenshotDestination(_ path: String) throws {
+        let pathExtension = URL(fileURLWithPath: path)
+            .pathExtension
+            .lowercased()
+        guard ["png", "jpg", "jpeg"].contains(pathExtension) else {
+            throw WBError.message("screenshot destination must end in .png, .jpg, or .jpeg")
+        }
+    }
+
+    private static func absolutePath(for path: String) -> String {
+        let expanded = NSString(string: path).expandingTildeInPath
+        let url: URL
+        if expanded.hasPrefix("/") {
+            url = URL(fileURLWithPath: expanded)
+        } else {
+            url = URL(
+                fileURLWithPath: expanded,
+                relativeTo: URL(
+                    fileURLWithPath: FileManager.default.currentDirectoryPath,
+                    isDirectory: true
+                )
+            )
+        }
+        return url.standardizedFileURL.path
     }
 
     private static func isBrowserID(_ value: String) -> Bool {
@@ -538,9 +698,15 @@ func printHelp(_ topic: HelpTopic) {
           wb dump <id>
           wb show <id>
           wb hide <id>
+          wb screenshot <id> <destination.png|destination.jpg>
 
           wb page <id> [--fields <list>] [--selectors|--action-details]
           wb click <id> <action>
+          wb click <id> <x> <y>
+          wb press <id> <x> <y>
+          wb drag <id> <x> <y>
+          wb release <id> <x> <y>
+          wb scroll <id> <x> <y> <deltaX> <deltaY>
           wb fill <id> <action> <text>
           wb submit <id> <action>
           wb eval <id> [--body] <javascript>
@@ -605,6 +771,15 @@ func printHelp(_ topic: HelpTopic) {
         Hides the browser window without closing the browser.
         """)
 
+    case .screenshot:
+        print("""
+        Usage:
+          wb screenshot <id> <destination.png|destination.jpg>
+
+        Captures the current browser viewport and writes it to the destination path.
+        The image format is selected from the destination extension.
+        """)
+
     case .page:
         print("""
         Usage:
@@ -627,9 +802,49 @@ func printHelp(_ topic: HelpTopic) {
         print("""
         Usage:
           wb click <id> <action>
+          wb click <id> <x> <y>
 
         Clicks an action from the latest page output.
         <action> may be a 1-based number or an action ID.
+
+        With x and y coordinates, clicks the viewport at that point.
+        Coordinate clicks do not open a window; run wb show to observe the page.
+        """)
+
+    case .press:
+        print("""
+        Usage:
+          wb press <id> <x> <y>
+
+        Sends a page mouse-down event at the viewport coordinate.
+        Coordinates use a top-left origin.
+        """)
+
+    case .drag:
+        print("""
+        Usage:
+          wb drag <id> <x> <y>
+
+        Sends a page mouse-drag event to the viewport coordinate.
+        Use after wb press and before wb release.
+        """)
+
+    case .release:
+        print("""
+        Usage:
+          wb release <id> <x> <y>
+
+        Sends a page mouse-up event at the viewport coordinate.
+        Coordinates use a top-left origin.
+        """)
+
+    case .scroll:
+        print("""
+        Usage:
+          wb scroll <id> <x> <y> <deltaX> <deltaY>
+
+        Scrolls at the viewport coordinate without opening a window.
+        Coordinates use a top-left origin; deltas use CSS pixel units.
         """)
 
     case .fill:
@@ -967,6 +1182,11 @@ private extension Array where Element == String {
         return integer
     }
 
+    mutating func popDouble(_ errorMessage: String) throws -> Double {
+        let value = try popFirst(errorMessage)
+        return try value.parsedDouble("expected number, got \(value)")
+    }
+
     func joinRemaining(_ errorMessage: String) throws -> String {
         let value = joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty else {
@@ -989,6 +1209,15 @@ private extension Array where Element == String {
         }
         remove(at: index)
         return true
+    }
+}
+
+private extension String {
+    func parsedDouble(_ errorMessage: String) throws -> Double {
+        guard let value = Double(self), value.isFinite else {
+            throw WBError.message(errorMessage)
+        }
+        return value
     }
 }
 

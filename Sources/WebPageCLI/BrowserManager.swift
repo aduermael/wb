@@ -1,3 +1,5 @@
+import AppKit
+import CoreTransferable
 import Foundation
 import Dispatch
 import Darwin
@@ -139,6 +141,19 @@ final class BrowserManager: @unchecked Sendable {
             }
             scheduleAutosave(browser, reason: "eval")
             return .success(browser: browser.id, value: value)
+
+        case .screenshot:
+            let browser = try await requireBrowser(request.browser)
+            let path = try request.requiredDestinationPath()
+            let result = try await browser.screenshot(to: path)
+            return .success(browser: browser.id, message: "saved \(result.path)")
+
+        case .coordinate:
+            let browser = try await requireBrowser(request.browser)
+            let action = try BrowserCoordinateAction(request: request)
+            let result = try await browser.coordinateAction(action)
+            scheduleAutosave(browser, reason: action.name)
+            return .success(browser: browser.id, page: result.page, message: result.message)
 
         case .daemonStop:
             daemonLog("daemon stop requested")
@@ -468,6 +483,59 @@ private final class BrowserInstance {
         return try JSONDecoder().decode(PageDOMStats.self, from: data)
     }
 
+    func viewportSize() async throws -> CGSize {
+        let json = try await callString(Self.viewportSizeScript)
+        let data = Data(json.utf8)
+        let size = try JSONDecoder().decode(BrowserViewportSize.self, from: data)
+        guard size.width > 0 && size.height > 0 else {
+            throw WBError.message("page viewport has no size")
+        }
+        return CGSize(width: CGFloat(size.width), height: CGFloat(size.height))
+    }
+
+    func screenshot(to path: String) async throws -> ScreenshotOutput {
+        guard page.url != nil else {
+            throw WBError.message("browser has no loaded page")
+        }
+
+        let format = try ScreenshotFormat(path: path)
+        let viewport = try await viewportSize()
+        let pngData = try await page.exported(as: .image(
+            region: .rect(CGRect(origin: .zero, size: viewport)),
+            allowTransparentBackground: false,
+            snapshotWidth: viewport.width,
+            afterScreenUpdates: true
+        ))
+        let imageData = try format.encodedData(fromPNG: pngData)
+
+        let url = URL(fileURLWithPath: path).standardizedFileURL
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try imageData.write(to: url, options: [.atomic])
+        daemonLog("screenshot saved id=\(id) path=\(url.path) bytes=\(imageData.count) format=\(format.name)")
+        return ScreenshotOutput(path: url.path, bytes: imageData.count, format: format.name)
+    }
+
+    func coordinateAction(_ coordinateAction: BrowserCoordinateAction) async throws -> InteractionResult {
+        guard page.url != nil else {
+            throw WBError.message("browser has no loaded page")
+        }
+
+        let previousURL = page.url
+        let message = try await callString(
+            Self.coordinateActionScript,
+            arguments: coordinateAction.javascriptArguments
+        )
+        await settle()
+        if page.url != previousURL {
+            actions.removeAll()
+        }
+
+        return InteractionResult(message: message, page: try await snapshot())
+    }
+
     func summary() -> BrowserSummary {
         BrowserSummary(
             browser: id,
@@ -794,6 +862,181 @@ private final class BrowserInstance {
     });
     """
 
+    private static let viewportSizeScript = """
+    const root = document.documentElement;
+    const body = document.body;
+    const width = Math.max(
+      1,
+      Math.floor(window.innerWidth || root?.clientWidth || body?.clientWidth || 1024)
+    );
+    const height = Math.max(
+      1,
+      Math.floor(window.innerHeight || root?.clientHeight || body?.clientHeight || 768)
+    );
+    return JSON.stringify({ width, height });
+    """
+
+    private static let coordinateActionScript = """
+    const actionName = String(action || "");
+    const clientX = Number(x);
+    const clientY = Number(y);
+    const scrollDeltaX = Number(deltaX || 0);
+    const scrollDeltaY = Number(deltaY || 0);
+
+    if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) {
+      return "coordinates must be finite numbers";
+    }
+    if (clientX < 0 || clientY < 0 || clientX >= window.innerWidth || clientY >= window.innerHeight) {
+      return `coordinate x=${clientX},y=${clientY} is outside viewport width=${window.innerWidth} height=${window.innerHeight}`;
+    }
+
+    function targetAtPoint() {
+      return document.elementFromPoint(clientX, clientY) || document.body || document.documentElement;
+    }
+
+    function targetName(el) {
+      if (!el) return "page";
+      const label = (
+        el.getAttribute?.("aria-label") ||
+        el.getAttribute?.("title") ||
+        el.innerText ||
+        el.textContent ||
+        el.id ||
+        el.tagName ||
+        "element"
+      ).toString().replace(/\\s+/g, " ").trim();
+      return label.slice(0, 80) || (el.tagName || "element").toLowerCase();
+    }
+
+    function pointerEvent(type, target, extra = {}) {
+      const init = {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        view: window,
+        clientX,
+        clientY,
+        screenX: window.screenX + clientX,
+        screenY: window.screenY + clientY,
+        button: 0,
+        buttons: extra.buttons ?? 0,
+        pointerId: 1,
+        pointerType: "mouse",
+        isPrimary: true,
+        detail: extra.detail ?? 0
+      };
+      const EventClass = typeof PointerEvent === "function" ? PointerEvent : MouseEvent;
+      return target.dispatchEvent(new EventClass(type, init));
+    }
+
+    function mouseEvent(type, target, extra = {}) {
+      return target.dispatchEvent(new MouseEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        view: window,
+        clientX,
+        clientY,
+        screenX: window.screenX + clientX,
+        screenY: window.screenY + clientY,
+        button: 0,
+        buttons: extra.buttons ?? 0,
+        detail: extra.detail ?? 0
+      }));
+    }
+
+    function focusIfPossible(target) {
+      if (target && typeof target.focus === "function") {
+        try { target.focus({ preventScroll: true }); } catch (_) { try { target.focus(); } catch (_) {} }
+      }
+    }
+
+    function press(target) {
+      window.__wbCoordinatePointer = { target, moved: false };
+      focusIfPossible(target);
+      pointerEvent("pointerdown", target, { buttons: 1 });
+      mouseEvent("mousedown", target, { buttons: 1, detail: 1 });
+    }
+
+    function drag(target) {
+      const state = window.__wbCoordinatePointer;
+      const dispatchTarget = state?.target || target;
+      if (state) state.moved = true;
+      pointerEvent("pointermove", dispatchTarget, { buttons: 1 });
+      mouseEvent("mousemove", dispatchTarget, { buttons: 1 });
+    }
+
+    function release(target) {
+      const state = window.__wbCoordinatePointer;
+      const dispatchTarget = state?.target || target;
+      pointerEvent("pointerup", dispatchTarget, { buttons: 0 });
+      mouseEvent("mouseup", dispatchTarget, { buttons: 0, detail: 1 });
+      if (!state?.moved) {
+        mouseEvent("click", dispatchTarget, { buttons: 0, detail: 1 });
+      }
+      window.__wbCoordinatePointer = null;
+    }
+
+    function nearestScrollable(start) {
+      let el = start;
+      while (el && el !== document.documentElement) {
+        const style = window.getComputedStyle(el);
+        const overflowX = style.overflowX || "";
+        const overflowY = style.overflowY || "";
+        const canScrollX = /(auto|scroll|overlay)/.test(overflowX) && el.scrollWidth > el.clientWidth;
+        const canScrollY = /(auto|scroll|overlay)/.test(overflowY) && el.scrollHeight > el.clientHeight;
+        if (canScrollX || canScrollY) {
+          return el;
+        }
+        el = el.parentElement;
+      }
+      return document.scrollingElement || document.documentElement;
+    }
+
+    function scrollAt(target) {
+      if (!Number.isFinite(scrollDeltaX) || !Number.isFinite(scrollDeltaY)) {
+        return "scroll deltas must be finite numbers";
+      }
+      target.dispatchEvent(new WheelEvent("wheel", {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        view: window,
+        clientX,
+        clientY,
+        deltaX: scrollDeltaX,
+        deltaY: scrollDeltaY,
+        deltaMode: WheelEvent.DOM_DELTA_PIXEL
+      }));
+      const scroller = nearestScrollable(target);
+      scroller.scrollBy({ left: scrollDeltaX, top: scrollDeltaY, behavior: "auto" });
+      return `scrolled x=${clientX},y=${clientY} by deltaX=${scrollDeltaX},deltaY=${scrollDeltaY}`;
+    }
+
+    const target = targetAtPoint();
+    if (!target) return "no element at coordinate";
+
+    switch (actionName) {
+    case "click":
+      press(target);
+      release(target);
+      return `clicked ${targetName(target)} at x=${clientX},y=${clientY}`;
+    case "press":
+      press(target);
+      return `pressed ${targetName(target)} at x=${clientX},y=${clientY}`;
+    case "drag":
+      drag(target);
+      return `dragged ${targetName(target)} to x=${clientX},y=${clientY}`;
+    case "release":
+      release(target);
+      return `released ${targetName(target)} at x=${clientX},y=${clientY}`;
+    case "scroll":
+      return scrollAt(target);
+    default:
+      return `unknown coordinate action ${actionName}`;
+    }
+    """
+
     private static let markdownTextScript = """
     const max = Number(maxLength) || 12000;
     const root = document.body;
@@ -928,13 +1171,144 @@ private final class BrowserInstance {
     """
 }
 
+enum BrowserCoordinateAction {
+    case click(CGPoint)
+    case press(CGPoint)
+    case drag(CGPoint)
+    case release(CGPoint)
+    case scroll(point: CGPoint, deltaX: Double, deltaY: Double)
+
+    init(request: WireRequest) throws {
+        let action = try request.requiredCoordinateAction()
+        let point = CGPoint(
+            x: CGFloat(try request.requiredX()),
+            y: CGFloat(try request.requiredY())
+        )
+
+        switch action {
+        case "click":
+            self = .click(point)
+        case "press":
+            self = .press(point)
+        case "drag":
+            self = .drag(point)
+        case "release":
+            self = .release(point)
+        case "scroll":
+            self = .scroll(
+                point: point,
+                deltaX: try request.requiredDeltaX(),
+                deltaY: try request.requiredDeltaY()
+            )
+        default:
+            throw WBError.message("unknown coordinate action \(action)")
+        }
+    }
+
+    var name: String {
+        switch self {
+        case .click:
+            return "click"
+        case .press:
+            return "press"
+        case .drag:
+            return "drag"
+        case .release:
+            return "release"
+        case .scroll:
+            return "scroll"
+        }
+    }
+
+    var point: CGPoint {
+        switch self {
+        case .click(let point),
+             .press(let point),
+             .drag(let point),
+             .release(let point):
+            return point
+        case .scroll(let point, _, _):
+            return point
+        }
+    }
+
+    var javascriptArguments: [String: Any] {
+        var arguments: [String: Any] = [
+            "action": name,
+            "x": Double(point.x),
+            "y": Double(point.y),
+        ]
+
+        if case .scroll(_, let deltaX, let deltaY) = self {
+            arguments["deltaX"] = deltaX
+            arguments["deltaY"] = deltaY
+        }
+
+        return arguments
+    }
+}
+
+private enum ScreenshotFormat {
+    case png
+    case jpeg
+
+    init(path: String) throws {
+        switch URL(fileURLWithPath: path).pathExtension.lowercased() {
+        case "png":
+            self = .png
+        case "jpg", "jpeg":
+            self = .jpeg
+        default:
+            throw WBError.message("screenshot destination must end in .png, .jpg, or .jpeg")
+        }
+    }
+
+    var name: String {
+        switch self {
+        case .png:
+            return "png"
+        case .jpeg:
+            return "jpeg"
+        }
+    }
+
+    func encodedData(fromPNG pngData: Data) throws -> Data {
+        switch self {
+        case .png:
+            return pngData
+        case .jpeg:
+            guard let image = NSImage(data: pngData),
+                  let tiffData = image.tiffRepresentation,
+                  let bitmap = NSBitmapImageRep(data: tiffData),
+                  let jpegData = bitmap.representation(
+                    using: .jpeg,
+                    properties: [.compressionFactor: 0.9]
+                  ) else {
+                throw WBError.message("failed to encode JPEG screenshot")
+            }
+            return jpegData
+        }
+    }
+}
+
 private struct InteractionResult {
     let message: String
     let page: PageSnapshot
+}
+
+private struct ScreenshotOutput {
+    let path: String
+    let bytes: Int
+    let format: String
 }
 
 private struct PageDOMStats: Decodable, Sendable {
     let imageCount: Int
     let images: [BrowserImage]
     let htmlBytes: Int
+}
+
+private struct BrowserViewportSize: Decodable, Sendable {
+    let width: Double
+    let height: Double
 }

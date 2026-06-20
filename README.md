@@ -44,6 +44,9 @@ $ wb click a3f19c0b 1
 $ wb eval a3f19c0b "document.title"
 Example Domain
 
+$ wb screenshot a3f19c0b /tmp/example.png
+saved /tmp/example.png
+
 $ wb show a3f19c0b
 $ wb hide a3f19c0b
 ```
@@ -70,8 +73,14 @@ Use `wb page --help` to see filterable fields. Use `wb page <id> --fields title,
 - `wb dump <id>`: save the browser so it can be resumed later.
 - `wb show <id>`: show a lightweight browser window for the browser.
 - `wb hide <id>`: hide the browser window without closing the browser.
+- `wb screenshot <id> <destination.png|destination.jpg>`: capture the current browser viewport as PNG or JPEG, selected by extension.
 - `wb page <id> [--fields <list>] [--selectors|--action-details]`: refresh and print page JSON, including visible actions and image URLs.
 - `wb click <id> <action>`: click an action from the latest page/action list and print a compact summary.
+- `wb click <id> <x> <y>`: click the current viewport coordinate without opening a window.
+- `wb press <id> <x> <y>`: send a page mouse-down event at a viewport coordinate.
+- `wb drag <id> <x> <y>`: send a page mouse-drag event to a viewport coordinate after `press`.
+- `wb release <id> <x> <y>`: send a page mouse-up event at a viewport coordinate.
+- `wb scroll <id> <x> <y> <deltaX> <deltaY>`: scroll at a viewport coordinate without opening a window.
 - `wb fill <id> <action> <text>`: set the value of an input, textarea, select, or contenteditable element and print a compact summary.
 - `wb submit <id> <action>`: submit the nearest form for an action and print a compact summary.
 - `wb eval <id> [--body] <javascript>`: evaluate a JavaScript expression, or run a raw `WebPage.callJavaScript` function body with `--body`, and print the result.
@@ -87,8 +96,10 @@ Browsers persist between commands and are autosaved after creation, navigation, 
 
 The `page` command refreshes the action list for the current document. If the page navigates or rerenders, run `wb page <id>` again before using action numbers from older output.
 
+Coordinate commands use top-left origin coordinates in the current web content viewport and do not open a window. `screenshot` captures that same viewport, so agents can inspect the image and use matching coordinates for `click`, `press`, `drag`, `release`, and `scroll`. If the browser is already visible through `wb show`, the same page updates are visible there.
+
 By default, browser sessions are stored in `.wb/sessions` under the current directory. Existing `wb/sessions` directories are still used for compatibility. Set `WB_DIR` to override the state directory.
 
-The `show` command attaches a small native window to the same `WebPage` used by headless commands. While a browser window is visible, the daemon does not idle-exit. Use `wb hide <id>` or close the window to allow normal idle shutdown again.
+The `show` command attaches a native window to the same `WebPage` used by headless commands. While a browser window is visible, the daemon does not idle-exit. Use `wb hide <id>` or close the window to allow normal idle shutdown again.
 
 Daemon logs are appended to `/tmp/wb-webpage-<uid>.log` by default. Use `wb daemon log` to print the exact path, or set `WB_LOG` to override it.
