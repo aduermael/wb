@@ -26,6 +26,10 @@ swift build
 .build/debug/wb create
 ```
 
+## Agent Skill
+
+This repo includes a standalone agent skill at [SKILL.md](SKILL.md). It is written as portable skill markdown for both Codex and Claude, but is not installed in a dedicated skill folder. To install it in either environment, copy or symlink that file as the skill's `SKILL.md`.
+
 ## Basic Flow
 
 ```text
