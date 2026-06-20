@@ -2,12 +2,13 @@
 set -eu
 
 usage() {
-  echo "Usage: ./release.sh <version> [--build-only|--publish-only] [--repo owner/name] [arm64|x86_64 ...]" >&2
+  echo "Usage: ./release.sh <version> [--build-only|--publish-only] [--repo owner/name] [--tap-repo owner/name|--no-tap] [arm64|x86_64 ...]" >&2
   echo "Examples:" >&2
   echo "  ./release.sh 0.1.0" >&2
   echo "  ./release.sh 0.1.0 --build-only" >&2
   echo "  ./release.sh 0.1.0 --publish-only" >&2
   echo "  ./release.sh 0.1.0 --build-only arm64" >&2
+  echo "  ./release.sh 0.1.0 --publish-only --no-tap" >&2
 }
 
 die() {
@@ -30,6 +31,7 @@ set_mode() {
 
 mode="all"
 repo="${WB_REPO:-aduermael/wb}"
+tap_repo="${WB_TAP_REPO:-aduermael/homebrew-tap}"
 input_version=""
 archs=""
 
@@ -54,6 +56,19 @@ while [ "$#" -gt 0 ]; do
       ;;
     --repo=*)
       repo="${1#--repo=}"
+      ;;
+    --tap-repo)
+      shift
+      if [ "$#" -eq 0 ]; then
+        die "--tap-repo requires owner/name."
+      fi
+      tap_repo="$1"
+      ;;
+    --tap-repo=*)
+      tap_repo="${1#--tap-repo=}"
+      ;;
+    --no-tap)
+      tap_repo=""
       ;;
     arm64|x86_64)
       archs="${archs}${archs:+ }$1"
@@ -210,6 +225,89 @@ publish_release() {
   echo "Released $repo $tag"
 }
 
+checksum_for_arch() {
+  checksum_file="$dist/wb-macos-$1.tar.gz.sha256"
+  awk '{print $1}' "$checksum_file"
+}
+
+write_homebrew_formula() {
+  formula_path="$1"
+  version="${tag#v}"
+  arm_sha="$2"
+  intel_sha="$3"
+
+  cat > "$formula_path" <<EOF
+class Wb < Formula
+  desc "macOS web browser for agents"
+  homepage "https://github.com/$repo"
+  version "$version"
+
+  depends_on :macos
+
+  on_macos do
+    depends_on macos: :tahoe
+  end
+
+  if Hardware::CPU.arm?
+    url "https://github.com/$repo/releases/download/$tag/wb-macos-arm64.tar.gz"
+    sha256 "$arm_sha"
+  elsif Hardware::CPU.intel?
+    url "https://github.com/$repo/releases/download/$tag/wb-macos-x86_64.tar.gz"
+    sha256 "$intel_sha"
+  end
+
+  def install
+    bin.install "wb"
+  end
+
+  test do
+    assert_match "Usage:", shell_output("#{bin}/wb --help")
+  end
+end
+EOF
+}
+
+update_homebrew_tap() {
+  if [ -z "$tap_repo" ]; then
+    return
+  fi
+
+  need_cmd awk
+  need_cmd gh
+  need_cmd git
+
+  for required_arch in arm64 x86_64; do
+    if [ ! -f "$dist/wb-macos-$required_arch.tar.gz.sha256" ]; then
+      echo "Skipping Homebrew tap update; missing checksum for $required_arch." >&2
+      return
+    fi
+  done
+
+  arm_sha="$(checksum_for_arch arm64)"
+  intel_sha="$(checksum_for_arch x86_64)"
+  tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/wb-homebrew-tap.XXXXXX")"
+  tap_dir="$tmpdir/homebrew-tap"
+
+  (
+    trap 'rm -rf "$tmpdir"' EXIT INT HUP TERM
+
+    gh repo clone "$tap_repo" "$tap_dir"
+    mkdir -p "$tap_dir/Formula"
+    write_homebrew_formula "$tap_dir/Formula/wb.rb" "$arm_sha" "$intel_sha"
+
+    if [ -z "$(git -C "$tap_dir" status --porcelain -- Formula/wb.rb)" ]; then
+      echo "Homebrew tap $tap_repo already has wb $tag"
+      exit 0
+    fi
+
+    git -C "$tap_dir" add Formula/wb.rb
+    git -C "$tap_dir" commit -m "Update wb to $tag"
+    git -C "$tap_dir" push origin HEAD
+  )
+
+  echo "Updated Homebrew tap $tap_repo for $tag"
+}
+
 require_release_git_state
 
 case "$mode" in
@@ -217,11 +315,13 @@ case "$mode" in
     need_cmd gh
     build_release
     publish_release
+    update_homebrew_tap
     ;;
   build)
     build_release
     ;;
   publish)
     publish_release
+    update_homebrew_tap
     ;;
 esac

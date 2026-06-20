@@ -16,6 +16,14 @@ It gives scripts and coding agents a real persistent browser session without a b
 
 ## Install
 
+With Homebrew:
+
+```bash
+brew install aduermael/tap/wb
+```
+
+Or with the standalone installer:
+
 Prebuilt releases are macOS 26+ binaries. Installing them does not require Xcode or a Swift toolchain.
 
 ```bash
