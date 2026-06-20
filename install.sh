@@ -2,7 +2,8 @@
 set -eu
 
 repo="${WB_REPO:-aduermael/wb}"
-install_dir="${WB_INSTALL_DIR:-$HOME/.local/bin}"
+install_url="https://raw.githubusercontent.com/$repo/main/install.sh"
+install_dir="${WB_INSTALL_DIR:-/usr/local/bin}"
 version="${WB_VERSION:-latest}"
 
 case "$(uname -s)" in
@@ -35,6 +36,45 @@ for cmd in curl tar; do
   fi
 done
 
+install_binary() {
+  src="$1"
+  dest="$2"
+
+  if command -v install >/dev/null 2>&1; then
+    install -m 0755 "$src" "$dest"
+  else
+    cp "$src" "$dest"
+    chmod 0755 "$dest"
+  fi
+}
+
+sudo_install_binary() {
+  src="$1"
+  dest="$2"
+
+  if command -v install >/dev/null 2>&1; then
+    sudo install -m 0755 "$src" "$dest"
+  else
+    sudo cp "$src" "$dest"
+    sudo chmod 0755 "$dest"
+  fi
+}
+
+print_permission_help() {
+  echo "Could not write to $install_dir." >&2
+  echo >&2
+  if [ "$install_dir" = "/usr/local/bin" ]; then
+    echo "To install to /usr/local/bin with admin permissions:" >&2
+    echo "  curl -fsSL $install_url | sudo sh" >&2
+    echo >&2
+    echo "Or choose a user-writable install directory:" >&2
+    echo "  curl -fsSL $install_url | env WB_INSTALL_DIR=\$HOME/.local/bin sh" >&2
+  else
+    echo "Choose a writable install directory with WB_INSTALL_DIR, for example:" >&2
+    echo "  curl -fsSL $install_url | env WB_INSTALL_DIR=\$HOME/.local/bin sh" >&2
+  fi
+}
+
 asset="wb-$os-$arch.tar.gz"
 
 if [ "$version" = "latest" ]; then
@@ -64,13 +104,24 @@ if [ ! -f "$tmpdir/wb" ]; then
   exit 1
 fi
 
-mkdir -p "$install_dir"
-
-if command -v install >/dev/null 2>&1; then
-  install -m 0755 "$tmpdir/wb" "$install_dir/wb"
-else
-  cp "$tmpdir/wb" "$install_dir/wb"
-  chmod 0755 "$install_dir/wb"
+if ! mkdir -p "$install_dir" 2>/dev/null || ! install_binary "$tmpdir/wb" "$install_dir/wb" 2>/dev/null; then
+  if [ "$install_dir" = "/usr/local/bin" ] && command -v sudo >/dev/null 2>&1 && [ -r /dev/tty ]; then
+    printf "Installing to /usr/local/bin requires admin permissions. Use sudo? [y/N] " >/dev/tty
+    IFS= read -r answer </dev/tty || answer=""
+    case "$answer" in
+      y|Y|yes|YES)
+        sudo mkdir -p "$install_dir"
+        sudo_install_binary "$tmpdir/wb" "$install_dir/wb"
+        ;;
+      *)
+        print_permission_help
+        exit 1
+        ;;
+    esac
+  else
+    print_permission_help
+    exit 1
+  fi
 fi
 
 echo "Installed wb to $install_dir/wb"

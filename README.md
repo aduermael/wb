@@ -22,10 +22,12 @@ Prebuilt releases are macOS 26+ binaries. Installing them does not require Xcode
 curl -fsSL https://raw.githubusercontent.com/aduermael/wb/main/install.sh | sh
 ```
 
-By default this installs to `~/.local/bin/wb`. To choose another location:
+By default this installs to `/usr/local/bin/wb`, which is on `PATH` for most macOS shells. If that location requires admin permissions, the script offers to use `sudo`.
+
+To choose another location:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/aduermael/wb/main/install.sh | env WB_INSTALL_DIR=/usr/local/bin sh
+curl -fsSL https://raw.githubusercontent.com/aduermael/wb/main/install.sh | env WB_INSTALL_DIR="$HOME/.local/bin" sh
 ```
 
 To install a specific release:
