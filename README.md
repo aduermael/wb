@@ -1,36 +1,44 @@
 # wb
 
-A small non-interactive command-line prototype for experimenting with Apple's `WebKit.WebPage`.
+`wb` is a fully functional, lightweight web browser for agents, exposed as a command-line tool.
 
-`wb` opens and controls persistent `WebPage` browser sessions from the command line.
+It gives scripts and coding agents a real persistent browser session without a bundled Chromium, driver server, or heavyweight app wrapper. The release binary is less than 2 MB, starts from a normal shell command, speaks compact JSON, and can still show a live native preview window when you need to see what the agent sees.
 
-`WebPage` is available starting with macOS 26/iOS 26 SDKs. This prototype is a macOS CLI because iOS does not provide a normal user-facing shell for command-line programs. The same manager/client approach can be moved into an app or service host.
+## Why wb
 
-## Requirements
+- **Small enough to vendor into agent workflows.** A single lightweight macOS binary, not a browser distribution.
+- **Made for command loops.** Create a browser once, then navigate, inspect, click, fill, scroll, screenshot, and evaluate JavaScript across separate CLI calls.
+- **Structured output by default.** Commands return compact JSON summaries and stable action indexes that are easy for agents to consume.
+- **Headless until you need eyes.** Use `wb show <id>` to attach a live preview window to the same browser session, then `wb hide <id>` to go back to CLI-only control.
+- **Coordinates and screenshots line up.** The screenshot viewport is the same coordinate space used by `click`, `press`, `drag`, `release`, and `scroll`.
 
-- macOS 26.0 or newer
-- Xcode 26 or newer, with Swift 6.2 SDKs
+## Install
 
-The current container does not include Swift or Apple's WebKit framework, so this project is meant to be built on a Mac.
-
-## Run
-
-```bash
-swift run wb create
-```
-
-For repeated use, build once and call the binary directly:
+Prebuilt releases are macOS binaries. Installing them does not require Xcode or a Swift toolchain.
 
 ```bash
-swift build
-.build/debug/wb create
+curl -fsSL https://raw.githubusercontent.com/aduermael/wb/main/install.sh | sh
 ```
 
-## Agent Skill
+By default this installs to `~/.local/bin/wb`. To choose another location:
 
-This repo includes a standalone agent skill at [SKILL.md](SKILL.md). It is written as portable skill markdown for both Codex and Claude, but is not installed in a dedicated skill folder. To install it in either environment, copy or symlink that file as the skill's `SKILL.md`.
+```bash
+curl -fsSL https://raw.githubusercontent.com/aduermael/wb/main/install.sh | env WB_INSTALL_DIR=/usr/local/bin sh
+```
 
-## Basic Flow
+To install a specific release:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/aduermael/wb/main/install.sh | env WB_VERSION=0.1.0 sh
+```
+
+## Quick Start
+
+```bash
+wb https://example.com
+```
+
+That creates a browser, loads the page, and prints a compact JSON summary. For a longer-lived session:
 
 ```text
 $ wb create
@@ -45,15 +53,71 @@ $ wb page a3f19c0b
 $ wb click a3f19c0b 1
 {"actions":1,"browser":"a3f19c0b","htmlBytes":1256,"images":0,"jsonBytes":463,"message":"clicked More information...","progress":1.0,"title":"Example Domain","url":"https://example.com/"}
 
-$ wb eval a3f19c0b "document.title"
-Example Domain
-
 $ wb screenshot a3f19c0b /tmp/example.png
 saved /tmp/example.png
 
 $ wb show a3f19c0b
 $ wb hide a3f19c0b
 ```
+
+## Requirements
+
+The install path is intentionally light: prebuilt binaries do not require Xcode or a Swift toolchain.
+
+To run a prebuilt release:
+
+- macOS 26.0 or newer
+- No Xcode required
+- No Swift toolchain required
+
+Build-only requirements for source builds and release publishing:
+
+- A Mac with macOS 26.0 or newer
+- Xcode 26 or newer, with Swift 6.2 SDKs
+- `gh` authenticated to `aduermael/wb` for publishing releases
+
+## Build From Source
+
+```bash
+swift build
+.build/debug/wb create
+```
+
+For a local debug binary at `./wb`:
+
+```bash
+./build.sh
+./wb create
+```
+
+## Release
+
+Releases are intentionally published from a local Mac for now. There is no GitHub Action because the release binaries need to be built on macOS.
+
+From a clean checkout on `main`:
+
+```bash
+./release.sh 0.1.0
+```
+
+The release script:
+
+- builds release binaries for `arm64` and `x86_64`
+- packages `wb-macos-arm64.tar.gz` and `wb-macos-x86_64.tar.gz`
+- writes SHA-256 checksum files
+- pushes the current branch
+- creates and pushes the annotated tag, for example `v0.1.0`
+- creates the GitHub Release, or updates its assets if it already exists
+
+To build only one architecture:
+
+```bash
+./release.sh 0.1.0 arm64
+```
+
+## Agent Skill
+
+This repo includes a standalone agent skill at [SKILL.md](SKILL.md). It is written as portable skill markdown for both Codex and Claude, but is not installed in a dedicated skill folder. To install it in either environment, copy or symlink that file as the skill's `SKILL.md`.
 
 ## Output
 
@@ -87,7 +151,7 @@ Use `wb page --help` to see filterable fields. Use `wb page <id> --fields title,
 - `wb scroll <id> <x> <y> <deltaX> <deltaY>`: scroll at a viewport coordinate without opening a window.
 - `wb fill <id> <action> <text>`: set the value of an input, textarea, select, or contenteditable element and print a compact summary.
 - `wb submit <id> <action>`: submit the nearest form for an action and print a compact summary.
-- `wb eval <id> [--body] <javascript>`: evaluate a JavaScript expression, or run a raw `WebPage.callJavaScript` function body with `--body`, and print the result.
+- `wb eval <id> [--body] <javascript>`: evaluate a JavaScript expression, or run a raw JavaScript function body with `--body`, and print the result.
 - `wb daemon <start|status|log|stop>`: advanced browser session controls.
 
 Each command has its own help, for example `wb click --help` or `wb daemon --help`.
@@ -104,6 +168,6 @@ Coordinate commands use top-left origin coordinates in the current web content v
 
 By default, browser sessions are stored in `.wb/sessions` under the current directory. Existing `wb/sessions` directories are still used for compatibility. Set `WB_DIR` to override the state directory.
 
-The `show` command attaches a native window to the same `WebPage` used by headless commands. While a browser window is visible, the daemon does not idle-exit. Use `wb hide <id>` or close the window to allow normal idle shutdown again.
+The `show` command attaches a native window to the same browser used by headless commands. While a browser window is visible, the daemon does not idle-exit. Use `wb hide <id>` or close the window to allow normal idle shutdown again.
 
 Daemon logs are appended to `/tmp/wb-webpage-<uid>.log` by default. Use `wb daemon log` to print the exact path, or set `WB_LOG` to override it.

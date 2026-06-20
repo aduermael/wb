@@ -1,6 +1,7 @@
 # SwiftPM build and workspace artifacts
 .build/
 .swiftpm/
+dist/
 
 # Local runtime/debug artifacts
 .DS_Store
