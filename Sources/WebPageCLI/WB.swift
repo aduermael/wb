@@ -15,6 +15,8 @@ private struct WB {
             do {
                 try await run()
                 Darwin.exit(0)
+            } catch let exit as WBExit {
+                Darwin.exit(exit.code)
             } catch {
                 printError(error.localizedDescription)
                 Darwin.exit(1)

@@ -466,7 +466,8 @@ struct CLIParser {
 
 func render(_ response: WireResponse, mode: RenderMode) throws {
     if !response.ok {
-        throw WBError.message(response.error ?? "request failed")
+        try printJSON(CommandErrorOutput(response: response))
+        throw WBExit(code: 1)
     }
 
     switch mode {
@@ -552,7 +553,7 @@ func printHelp(_ topic: HelpTopic) {
         Notes:
           - Browsers persist between commands; use wb list to see saved IDs.
           - Dumped browser IDs resume automatically when used.
-          - JSON output is compact and omits false, empty, and null fields.
+          - JSON output is compact and omits empty, null, and most false fields.
           - Run 'wb <command> --help' for command details.
         """)
 
@@ -614,10 +615,11 @@ func printHelp(_ topic: HelpTopic) {
         Options:
           --fields <list>       Comma-separated fields: \(PageField.validList)
           --selectors           Include action CSS selectors.
-          --action-details      Include action id, index, tag, type, and selector.
+          --action-details      Include action id, tag, type, and selector.
 
         Notes:
-          - Default actions include kind, text, href, and disabled state.
+          - Default actions include index, kind, text, href, and disabled state.
+          - Image entries include index and URL.
           - Use action numbers by default; use --action-details to get action IDs.
         """)
 
@@ -712,6 +714,37 @@ private struct BrowserMessageOutput: Encodable {
     let message: String?
 }
 
+private struct CommandErrorOutput: Encodable {
+    let ok = false
+    let browser: String?
+    let error: String
+    let message: String?
+    let title: String?
+    let url: String?
+    let loading: Bool
+    let progress: Double?
+    let images: Int?
+    let htmlBytes: Int?
+    let jsonBytes: Int?
+    let actions: Int?
+
+    init(response: WireResponse) {
+        let page = response.page
+
+        browser = response.browser ?? page?.browser
+        error = response.error ?? "request failed"
+        message = response.message
+        title = page.flatMap { $0.title.nilIfEmpty }
+        url = page.flatMap { $0.url } ?? response.url
+        loading = page?.loading ?? false
+        progress = page?.progress
+        images = page?.imageCount
+        htmlBytes = page?.htmlBytes
+        jsonBytes = page.flatMap(defaultPageJSONByteCount)
+        actions = page.map { $0.actions.count }
+    }
+}
+
 private struct PageSummaryOutput: Encodable {
     let browser: String?
     let message: String?
@@ -731,7 +764,7 @@ private struct PageSummaryOutput: Encodable {
         url = page.flatMap { $0.url }
         loading = page?.loading ?? false
         progress = page?.progress
-        images = page?.images
+        images = page?.imageCount
         htmlBytes = page?.htmlBytes
         jsonBytes = page.flatMap(defaultPageJSONByteCount)
         actions = page.map { $0.actions.count }
@@ -744,7 +777,8 @@ private struct PageOutput: Encodable {
     let url: String?
     let loading: Bool
     let progress: Double
-    let images: Int?
+    let imageCount: Int?
+    let images: [PageImageOutput]
     let htmlBytes: Int?
     let jsonBytes: Int?
     let text: String?
@@ -757,7 +791,8 @@ private struct PageOutput: Encodable {
         url = page.url
         loading = page.loading
         progress = page.progress
-        images = page.images
+        imageCount = page.imageCount
+        images = page.images.map { PageImageOutput(image: $0) }
         htmlBytes = page.htmlBytes
         jsonBytes = includeJSONBytes ? defaultPageJSONByteCount(page) : nil
         text = page.text.nilIfEmpty
@@ -773,6 +808,7 @@ private struct PageOutput: Encodable {
         try encode(url, for: .url, in: &container)
         try encode(loading, for: .loading, in: &container)
         try encode(progress, for: .progress, in: &container)
+        try encode(imageCount, for: .imageCount, in: &container)
         try encode(images, for: .images, in: &container)
         try encode(htmlBytes, for: .htmlBytes, in: &container)
         try encode(jsonBytes, for: .jsonBytes, in: &container)
@@ -784,6 +820,7 @@ private struct PageOutput: Encodable {
         case actions
         case browser
         case htmlBytes
+        case imageCount
         case images
         case jsonBytes
         case loading
@@ -817,7 +854,7 @@ private struct PageOutput: Encodable {
 
 private struct PageActionOutput: Encodable {
     let id: String?
-    let index: Int?
+    let index: Int
     let kind: String
     let tag: String?
     let type: String?
@@ -828,7 +865,7 @@ private struct PageActionOutput: Encodable {
 
     init(action: BrowserAction, options: PageOutputOptions) {
         id = options.includeActionDetails ? action.id : nil
-        index = options.includeActionDetails ? action.index : nil
+        index = action.index
         kind = action.outputKind
         tag = options.includeActionDetails ? action.tag : nil
         type = options.includeActionDetails ? action.type.nilIfEmpty : nil
@@ -836,6 +873,18 @@ private struct PageActionOutput: Encodable {
         href = action.href.nilIfEmpty
         disabled = action.disabled
         selector = (options.includeActionSelectors || options.includeActionDetails) ? action.selector : nil
+    }
+}
+
+private struct PageImageOutput: Encodable {
+    let index: Int
+    let url: String
+    let alt: String?
+
+    init(image: BrowserImage) {
+        index = image.index
+        url = image.url
+        alt = image.alt.nilIfEmpty
     }
 }
 
@@ -856,6 +905,7 @@ enum PageField: String, CaseIterable, Hashable {
     case actions
     case browser
     case htmlBytes
+    case imageCount
     case images
     case jsonBytes
     case loading

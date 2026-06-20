@@ -1,7 +1,7 @@
 import Foundation
 
 enum WireProtocol {
-    static let version = 24
+    static let version = 25
 }
 
 enum WireCommand: String, Codable, Equatable, Sendable {
@@ -92,13 +92,15 @@ struct WireResponse: Codable, Sendable {
     var value: String?
     var message: String?
     var error: String?
+    var url: String?
 
     static func success(
         browser: String? = nil,
         browsers: [BrowserSummary]? = nil,
         page: PageSnapshot? = nil,
         value: String? = nil,
-        message: String? = nil
+        message: String? = nil,
+        url: String? = nil
     ) -> WireResponse {
         WireResponse(
             protocolVersion: WireProtocol.version,
@@ -108,20 +110,27 @@ struct WireResponse: Codable, Sendable {
             page: page,
             value: value,
             message: message,
-            error: nil
+            error: nil,
+            url: url
         )
     }
 
-    static func failure(_ message: String) -> WireResponse {
+    static func failure(
+        _ message: String,
+        browser: String? = nil,
+        page: PageSnapshot? = nil,
+        url: String? = nil
+    ) -> WireResponse {
         WireResponse(
             protocolVersion: WireProtocol.version,
             ok: false,
-            browser: nil,
+            browser: browser,
             browsers: nil,
-            page: nil,
+            page: page,
             value: nil,
             message: nil,
-            error: message
+            error: message,
+            url: url
         )
     }
 }
@@ -146,10 +155,91 @@ struct PageSnapshot: Codable, Sendable {
     let url: String?
     let loading: Bool
     let progress: Double
-    let images: Int?
+    let imageCount: Int?
+    let images: [BrowserImage]
     let htmlBytes: Int?
     let text: String?
     let actions: [BrowserAction]
+
+    init(
+        browser: String,
+        title: String,
+        url: String?,
+        loading: Bool,
+        progress: Double,
+        imageCount: Int?,
+        images: [BrowserImage],
+        htmlBytes: Int?,
+        text: String?,
+        actions: [BrowserAction]
+    ) {
+        self.browser = browser
+        self.title = title
+        self.url = url
+        self.loading = loading
+        self.progress = progress
+        self.imageCount = imageCount
+        self.images = images
+        self.htmlBytes = htmlBytes
+        self.text = text
+        self.actions = actions
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+
+        browser = try container.decode(String.self, forKey: .browser)
+        title = try container.decode(String.self, forKey: .title)
+        url = try container.decodeIfPresent(String.self, forKey: .url)
+        loading = try container.decode(Bool.self, forKey: .loading)
+        progress = try container.decode(Double.self, forKey: .progress)
+        htmlBytes = try container.decodeIfPresent(Int.self, forKey: .htmlBytes)
+        text = try container.decodeIfPresent(String.self, forKey: .text)
+        actions = try container.decode([BrowserAction].self, forKey: .actions)
+
+        if let decodedImages = try? container.decode([BrowserImage].self, forKey: .images) {
+            images = decodedImages
+            imageCount = try container.decodeIfPresent(Int.self, forKey: .imageCount) ?? decodedImages.count
+        } else {
+            let legacyImageCount = try container.decodeIfPresent(Int.self, forKey: .images)
+            images = []
+            imageCount = try container.decodeIfPresent(Int.self, forKey: .imageCount) ?? legacyImageCount
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+
+        try container.encode(browser, forKey: .browser)
+        try container.encode(title, forKey: .title)
+        try container.encodeIfPresent(url, forKey: .url)
+        try container.encode(loading, forKey: .loading)
+        try container.encode(progress, forKey: .progress)
+        try container.encodeIfPresent(imageCount, forKey: .imageCount)
+        try container.encode(images, forKey: .images)
+        try container.encodeIfPresent(htmlBytes, forKey: .htmlBytes)
+        try container.encodeIfPresent(text, forKey: .text)
+        try container.encode(actions, forKey: .actions)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case actions
+        case browser
+        case htmlBytes
+        case imageCount
+        case images
+        case loading
+        case progress
+        case text
+        case title
+        case url
+    }
+}
+
+struct BrowserImage: Codable, Sendable {
+    let index: Int
+    let url: String
+    let alt: String?
 }
 
 struct BrowserAction: Codable, Sendable {

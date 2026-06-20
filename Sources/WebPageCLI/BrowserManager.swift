@@ -86,13 +86,17 @@ final class BrowserManager: @unchecked Sendable {
                 page = try await browserState.browser.open(url)
             } catch {
                 daemonLog(
-                    "open failed browser=\(browserState.browser.id) removeOnFailure=\(browserState.removeOnFailure) " +
+                    "open failed browser=\(browserState.browser.id) createdForOpen=\(browserState.createdForOpen) " +
                     "error=\(error.localizedDescription)"
                 )
-                if browserState.removeOnFailure {
-                    browsers.removeValue(forKey: browserState.browser.id)
-                }
-                throw error
+                let failedPage = await browserState.browser.bestEffortSnapshot(fallbackURL: url.absoluteString)
+                scheduleAutosave(browserState.browser, reason: "open-failed")
+                return .failure(
+                    error.localizedDescription,
+                    browser: browserState.browser.id,
+                    page: failedPage,
+                    url: url.absoluteString
+                )
             }
             scheduleAutosave(browserState.browser, reason: "open")
             return .success(browser: browserState.browser.id, page: page)
@@ -188,9 +192,9 @@ final class BrowserManager: @unchecked Sendable {
         }
     }
 
-    private func browserForOpen(id: String?) throws -> (browser: BrowserInstance, removeOnFailure: Bool) {
+    private func browserForOpen(id: String?) throws -> (browser: BrowserInstance, createdForOpen: Bool) {
         guard let id else {
-            daemonLog("open requested without browser; creating temporary removable browser")
+            daemonLog("open requested without browser; creating browser")
             return (createBrowser(), true)
         }
 
@@ -363,17 +367,31 @@ private final class BrowserInstance {
         var request = URLRequest(url: url)
         request.attribution = .user
 
-        for try await _ in page.load(request) {}
-        await settle()
-        updatedAt = Date()
+        do {
+            for try await _ in page.load(request) {}
+            await settle()
+            updatedAt = Date()
+        } catch {
+            updatedAt = Date()
+            throw error
+        }
 
-        let pageSnapshot = try await snapshot()
+        let pageSnapshot = try await snapshot(fallbackURL: url.absoluteString)
         daemonLog("browser open complete id=\(id) url=\(pageSnapshot.url ?? "-") title=\(pageSnapshot.title)")
         return pageSnapshot
     }
 
-    func snapshot() async throws -> PageSnapshot {
+    func snapshot(fallbackURL: String? = nil) async throws -> PageSnapshot {
         let currentActions = try await refreshActions()
+        return await snapshot(actions: currentActions, fallbackURL: fallbackURL)
+    }
+
+    func bestEffortSnapshot(fallbackURL: String? = nil) async -> PageSnapshot {
+        let currentActions = (try? await refreshActions()) ?? []
+        return await snapshot(actions: currentActions, fallbackURL: fallbackURL)
+    }
+
+    private func snapshot(actions currentActions: [BrowserAction], fallbackURL: String?) async -> PageSnapshot {
         let visibleText = try? await markdownText(maxLength: 6000)
         let stats = try? await pageStats()
         updatedAt = Date()
@@ -381,10 +399,11 @@ private final class BrowserInstance {
         return PageSnapshot(
             browser: id,
             title: page.title,
-            url: page.url?.absoluteString,
+            url: page.url?.absoluteString ?? fallbackURL,
             loading: page.isLoading,
             progress: page.estimatedProgress,
-            images: stats?.images,
+            imageCount: stats?.imageCount,
+            images: stats?.images ?? [],
             htmlBytes: stats?.htmlBytes,
             text: visibleText,
             actions: currentActions
@@ -759,8 +778,18 @@ private final class BrowserInstance {
     const htmlBytes = typeof TextEncoder === "function"
       ? new TextEncoder().encode(html).length
       : new Blob([html]).size;
+    const imageElements = Array.from(document.querySelectorAll("img"));
+    const images = imageElements
+      .map((img, index) => ({
+        index: index + 1,
+        url: String(img.currentSrc || img.src || img.getAttribute("src") || "").trim(),
+        alt: String(img.getAttribute("alt") || "").trim()
+      }))
+      .filter((image) => image.url)
+      .slice(0, 250);
     return JSON.stringify({
-      images: document.images ? document.images.length : document.querySelectorAll("img").length,
+      imageCount: imageElements.length,
+      images,
       htmlBytes
     });
     """
@@ -905,6 +934,7 @@ private struct InteractionResult {
 }
 
 private struct PageDOMStats: Decodable, Sendable {
-    let images: Int
+    let imageCount: Int
+    let images: [BrowserImage]
     let htmlBytes: Int
 }

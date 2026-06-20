@@ -16,6 +16,10 @@ enum WBError: LocalizedError {
     }
 }
 
+struct WBExit: Error {
+    let code: Int32
+}
+
 extension Optional {
     func unwrap(_ message: String) throws -> Wrapped {
         guard let value = self else {
@@ -139,12 +143,12 @@ func daemonLog(_ message: String) {
     }
 }
 
-private func pruneJSONObject(_ value: Any) -> Any {
+private func pruneJSONObject(_ value: Any, key: String? = nil) -> Any {
     if let dictionary = value as? [String: Any] {
         var result: [String: Any] = [:]
         for (key, rawValue) in dictionary {
-            let prunedValue = pruneJSONObject(rawValue)
-            if !shouldOmitJSONValue(prunedValue) {
+            let prunedValue = pruneJSONObject(rawValue, key: key)
+            if !shouldOmitJSONValue(prunedValue, key: key) {
                 result[key] = prunedValue
             }
         }
@@ -152,19 +156,19 @@ private func pruneJSONObject(_ value: Any) -> Any {
     }
 
     if let array = value as? [Any] {
-        return array.map(pruneJSONObject)
+        return array.map { pruneJSONObject($0, key: key) }
     }
 
     return value
 }
 
-private func shouldOmitJSONValue(_ value: Any) -> Bool {
+private func shouldOmitJSONValue(_ value: Any, key: String? = nil) -> Bool {
     if value is NSNull {
         return true
     }
 
     if isJSONFalse(value) {
-        return true
+        return key != "ok"
     }
 
     if let string = value as? String {

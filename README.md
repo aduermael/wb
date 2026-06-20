@@ -36,7 +36,7 @@ $ wb a3f19c0b https://example.com
 {"actions":1,"browser":"a3f19c0b","htmlBytes":1256,"images":0,"jsonBytes":463,"progress":1.0,"title":"Example Domain","url":"https://example.com/"}
 
 $ wb page a3f19c0b
-{"actions":[{"href":"https://www.iana.org/domains/example","kind":"link","text":"More information..."}],"browser":"a3f19c0b","htmlBytes":1256,"images":0,"jsonBytes":463,"progress":1.0,"text":"Example Domain\n\nThis domain is for use in illustrative examples in documents. You may use this domain in literature without prior coordination or asking for permission.\n\n[More information...](https://www.iana.org/domains/example)","title":"Example Domain","url":"https://example.com/"}
+{"actions":[{"href":"https://www.iana.org/domains/example","index":1,"kind":"link","text":"More information..."}],"browser":"a3f19c0b","htmlBytes":1256,"imageCount":0,"jsonBytes":479,"progress":1.0,"text":"Example Domain\n\nThis domain is for use in illustrative examples in documents. You may use this domain in literature without prior coordination or asking for permission.\n\n[More information...](https://www.iana.org/domains/example)","title":"Example Domain","url":"https://example.com/"}
 
 $ wb click a3f19c0b 1
 {"actions":1,"browser":"a3f19c0b","htmlBytes":1256,"images":0,"jsonBytes":463,"message":"clicked More information...","progress":1.0,"title":"Example Domain","url":"https://example.com/"}
@@ -50,13 +50,15 @@ $ wb hide a3f19c0b
 
 ## Output
 
-`wb` keeps structured CLI JSON compact by default. JSON is emitted on one line and omits fields that do not add information: `null`, `false`, empty strings, empty arrays, and empty objects. Raw `eval` results are printed as returned strings.
+`wb` keeps structured CLI JSON compact by default. JSON is emitted on one line and omits fields that do not add information: `null`, most `false` values, empty strings, empty arrays, and empty objects. Error responses preserve `ok:false`. Raw `eval` results are printed as returned strings.
 
-Commands avoid returning a full page snapshot unless explicitly asked. Use `wb <url>` or `wb <id> <url>` for a compact summary containing the browser ID, title, URL, loading/progress, action count, image count, full-document HTML byte count, and default page JSON byte count. Use `wb page <id>` when you need visible text and the full action list.
+Commands avoid returning a full page snapshot unless explicitly asked. Use `wb <url>` or `wb <id> <url>` for a compact summary containing the browser ID, title, URL, loading/progress, action count, image count, full-document HTML byte count, and default page JSON byte count. Use `wb page <id>` when you need visible text, the full action list, and image URLs.
 
-Browser IDs are random 8-character lowercase hex strings. Page snapshot text is markdown-like and includes inline links where possible. Page actions are compact by default and omit internal IDs, CSS selectors, tags, and explicit index fields. The action number for `click`, `fill`, and `submit` is the 1-based position in the `actions` array. Use `wb page <id> --action-details` to include internal action IDs, or `wb page <id> --selectors` to include CSS selectors.
+Browser IDs are random 8-character lowercase hex strings. Page snapshot text is markdown-like and includes inline links where possible. Page actions are compact by default and include a 1-based `index` for `click`, `fill`, and `submit`; internal IDs, CSS selectors, and tags are omitted unless requested. Image entries include a 1-based `index` and resolved URL. Use `wb page <id> --action-details` to include internal action IDs, or `wb page <id> --selectors` to include CSS selectors.
 
-Use `wb page --help` to see filterable fields. Use `wb page <id> --fields title,url,images,htmlBytes,jsonBytes` to print selected top-level fields.
+Navigation errors are emitted as JSON responses with `ok:false` and a nonzero exit status. When a browser exists, the error JSON includes its browser ID so it can still be shown, reused, or closed.
+
+Use `wb page --help` to see filterable fields. Use `wb page <id> --fields title,url,imageCount,images,htmlBytes,jsonBytes` to print selected top-level fields.
 
 ## Commands
 
@@ -68,7 +70,7 @@ Use `wb page --help` to see filterable fields. Use `wb page <id> --fields title,
 - `wb dump <id>`: save the browser so it can be resumed later.
 - `wb show <id>`: show a lightweight browser window for the browser.
 - `wb hide <id>`: hide the browser window without closing the browser.
-- `wb page <id> [--fields <list>] [--selectors|--action-details]`: refresh and print page JSON, including visible actions.
+- `wb page <id> [--fields <list>] [--selectors|--action-details]`: refresh and print page JSON, including visible actions and image URLs.
 - `wb click <id> <action>`: click an action from the latest page/action list and print a compact summary.
 - `wb fill <id> <action> <text>`: set the value of an input, textarea, select, or contenteditable element and print a compact summary.
 - `wb submit <id> <action>`: submit the nearest form for an action and print a compact summary.
