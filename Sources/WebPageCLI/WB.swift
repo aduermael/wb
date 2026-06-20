@@ -3,7 +3,7 @@ import Darwin
 
 @main
 private struct WB {
-    static func main() async {
+    static func main() {
         guard #available(macOS 26.0, *) else {
             printError("wb requires macOS 26.0 or newer.")
             Darwin.exit(1)
@@ -11,12 +11,16 @@ private struct WB {
 
         Darwin.signal(SIGPIPE, SIG_IGN)
 
-        do {
-            try await run()
-        } catch {
-            printError(error.localizedDescription)
-            Darwin.exit(1)
+        Task {
+            do {
+                try await run()
+                Darwin.exit(0)
+            } catch {
+                printError(error.localizedDescription)
+                Darwin.exit(1)
+            }
         }
+        RunLoop.main.run()
     }
 
     @available(macOS 26.0, *)
@@ -40,6 +44,9 @@ private struct WB {
         case .daemonStatus:
             let client = DaemonClient()
             print(client.isRunning() ? "running" : "not running")
+
+        case .daemonLogPath:
+            print(WBConfig.current().logPath)
 
         default:
             let request = try invocation.request.unwrap("missing daemon request")

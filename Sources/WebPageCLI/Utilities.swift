@@ -97,6 +97,48 @@ func printError(_ message: String) {
     FileHandle.standardError.write(Data("error: \(message)\n".utf8))
 }
 
+func daemonLog(_ message: String) {
+    let path = WBConfig.current().logPath
+    let sanitizedMessage = message
+        .replacingOccurrences(of: "\r", with: " ")
+        .replacingOccurrences(of: "\n", with: " ")
+    let line = "[\(Date().iso8601String)] pid=\(Darwin.getpid()) \(sanitizedMessage)\n"
+    let flags = O_WRONLY | O_CREAT | O_APPEND
+    let mode = mode_t(S_IRUSR | S_IWUSR)
+    let fd = Darwin.open(path, flags, mode)
+    guard fd >= 0 else {
+        printError("daemon log open failed: \(String(cString: strerror(errno)))")
+        return
+    }
+    defer { Darwin.close(fd) }
+
+    let data = Data(line.utf8)
+    data.withUnsafeBytes { buffer in
+        guard let baseAddress = buffer.baseAddress else {
+            return
+        }
+
+        var written = 0
+        while written < buffer.count {
+            let count = Darwin.write(
+                fd,
+                baseAddress.advanced(by: written),
+                buffer.count - written
+            )
+            if count < 0 {
+                if errno == EINTR {
+                    continue
+                }
+                return
+            }
+            if count == 0 {
+                return
+            }
+            written += count
+        }
+    }
+}
+
 private func pruneJSONObject(_ value: Any) -> Any {
     if let dictionary = value as? [String: Any] {
         var result: [String: Any] = [:]

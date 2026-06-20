@@ -1,5 +1,7 @@
 .build/
 .swiftpm/
 .DS_Store
+.wb/
+debug.log
 wb
 wp/

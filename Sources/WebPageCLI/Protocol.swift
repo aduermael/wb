@@ -1,11 +1,17 @@
 import Foundation
 
+enum WireProtocol {
+    static let version = 24
+}
+
 enum WireCommand: String, Codable, Equatable, Sendable {
     case ping
     case browserCreate
     case browserList
     case browserClose
     case browserDump
+    case browserShow
+    case browserHide
     case open
     case page
     case click
@@ -78,6 +84,7 @@ struct WireRequest: Codable, Sendable {
 }
 
 struct WireResponse: Codable, Sendable {
+    var protocolVersion: Int?
     var ok: Bool
     var browser: String?
     var browsers: [BrowserSummary]?
@@ -94,6 +101,7 @@ struct WireResponse: Codable, Sendable {
         message: String? = nil
     ) -> WireResponse {
         WireResponse(
+            protocolVersion: WireProtocol.version,
             ok: true,
             browser: browser,
             browsers: browsers,
@@ -106,6 +114,7 @@ struct WireResponse: Codable, Sendable {
 
     static func failure(_ message: String) -> WireResponse {
         WireResponse(
+            protocolVersion: WireProtocol.version,
             ok: false,
             browser: nil,
             browsers: nil,
@@ -124,6 +133,7 @@ struct BrowserSummary: Codable, Sendable {
     let loading: Bool
     let progress: Double
     let actions: Int
+    let visible: Bool?
     let createdAt: String
     let updatedAt: String
     let dumped: Bool?

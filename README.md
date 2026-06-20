@@ -43,6 +43,9 @@ $ wb click a3f19c0b 1
 
 $ wb eval a3f19c0b "document.title"
 Example Domain
+
+$ wb show a3f19c0b
+$ wb hide a3f19c0b
 ```
 
 ## Output
@@ -63,12 +66,14 @@ Use `wb page --help` to see filterable fields. Use `wb page <id> --fields title,
 - `wb list`: print active and dumped browser summaries as compact JSON.
 - `wb close <id>`: close an active browser and delete any dumped session for that ID.
 - `wb dump <id>`: save the browser so it can be resumed later.
+- `wb show <id>`: show a lightweight browser window for the browser.
+- `wb hide <id>`: hide the browser window without closing the browser.
 - `wb page <id> [--fields <list>] [--selectors|--action-details]`: refresh and print page JSON, including visible actions.
 - `wb click <id> <action>`: click an action from the latest page/action list and print a compact summary.
 - `wb fill <id> <action> <text>`: set the value of an input, textarea, select, or contenteditable element and print a compact summary.
 - `wb submit <id> <action>`: submit the nearest form for an action and print a compact summary.
 - `wb eval <id> [--body] <javascript>`: evaluate a JavaScript expression, or run a raw `WebPage.callJavaScript` function body with `--body`, and print the result.
-- `wb daemon <start|status|stop>`: advanced browser session controls.
+- `wb daemon <start|status|log|stop>`: advanced browser session controls.
 
 Each command has its own help, for example `wb click --help` or `wb daemon --help`.
 
@@ -76,6 +81,12 @@ Browser IDs can be used across commands. If a saved browser is not currently act
 
 ## Notes
 
-Browsers persist between commands. Use `wb list` to find browser IDs, `wb page <id>` to inspect the current page, and `wb close <id>` when you are done.
+Browsers persist between commands and are autosaved after creation, navigation, interactions, and JavaScript evaluation. Use `wb list` to find browser IDs, `wb page <id>` to inspect the current page, and `wb close <id>` when you are done.
 
 The `page` command refreshes the action list for the current document. If the page navigates or rerenders, run `wb page <id>` again before using action numbers from older output.
+
+By default, browser sessions are stored in `.wb/sessions` under the current directory. Existing `wb/sessions` directories are still used for compatibility. Set `WB_DIR` to override the state directory.
+
+The `show` command attaches a small native window to the same `WebPage` used by headless commands. While a browser window is visible, the daemon does not idle-exit. Use `wb hide <id>` or close the window to allow normal idle shutdown again.
+
+Daemon logs are appended to `/tmp/wb-webpage-<uid>.log` by default. Use `wb daemon log` to print the exact path, or set `WB_LOG` to override it.

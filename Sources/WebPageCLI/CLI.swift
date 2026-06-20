@@ -20,9 +20,11 @@ struct CLIInvocation {
 }
 
 enum RenderMode {
+    case silent
     case help(HelpTopic)
     case daemonStatus
     case daemonStart
+    case daemonLogPath
     case browserID
     case browsers
     case browserMessage
@@ -39,6 +41,8 @@ enum HelpTopic {
     case list
     case close
     case dump
+    case show
+    case hide
     case page
     case click
     case fill
@@ -48,6 +52,7 @@ enum HelpTopic {
     case daemonStart
     case daemonStatus
     case daemonStop
+    case daemonLog
 }
 
 struct PageOutputOptions {
@@ -138,6 +143,42 @@ struct CLIParser {
             return CLIInvocation(
                 request: WireRequest(command: .browserDump, browser: id),
                 renderMode: .browserMessage,
+                startDaemon: true,
+                daemonIdleTimeout: nil
+            )
+
+        case "show":
+            if arguments.containsHelpFlag {
+                return help(.show)
+            }
+            let id = try popBrowserID(
+                from: &arguments,
+                usage: "usage: wb show <id>"
+            )
+            guard arguments.isEmpty else {
+                throw WBError.message("unexpected show argument \(arguments[0])")
+            }
+            return CLIInvocation(
+                request: WireRequest(command: .browserShow, browser: id),
+                renderMode: .silent,
+                startDaemon: true,
+                daemonIdleTimeout: nil
+            )
+
+        case "hide":
+            if arguments.containsHelpFlag {
+                return help(.hide)
+            }
+            let id = try popBrowserID(
+                from: &arguments,
+                usage: "usage: wb hide <id>"
+            )
+            guard arguments.isEmpty else {
+                throw WBError.message("unexpected hide argument \(arguments[0])")
+            }
+            return CLIInvocation(
+                request: WireRequest(command: .browserHide, browser: id),
+                renderMode: .silent,
                 startDaemon: true,
                 daemonIdleTimeout: nil
             )
@@ -295,6 +336,8 @@ struct CLIParser {
                 return help(.daemonStatus)
             case "stop":
                 return help(.daemonStop)
+            case "log", "logs", "log-path":
+                return help(.daemonLog)
             default:
                 throw WBError.message("unknown daemon command \(daemonCommand)")
             }
@@ -309,6 +352,10 @@ struct CLIParser {
             return help(.close)
         case "dump":
             return help(.dump)
+        case "show":
+            return help(.show)
+        case "hide":
+            return help(.hide)
         case "page":
             return help(.page)
         case "click":
@@ -381,6 +428,21 @@ struct CLIParser {
                 daemonIdleTimeout: nil
             )
 
+        case "log", "logs", "log-path":
+            let arguments = Array(arguments.dropFirst())
+            if arguments.containsHelpFlag {
+                return help(.daemonLog)
+            }
+            guard arguments.isEmpty else {
+                throw WBError.message("unexpected daemon log argument \(arguments[0])")
+            }
+            return CLIInvocation(
+                request: nil,
+                renderMode: .daemonLogPath,
+                startDaemon: false,
+                daemonIdleTimeout: nil
+            )
+
         case "stop":
             let arguments = Array(arguments.dropFirst())
             if arguments.containsHelpFlag {
@@ -408,6 +470,9 @@ func render(_ response: WireResponse, mode: RenderMode) throws {
     }
 
     switch mode {
+    case .silent:
+        break
+
     case .help(let topic):
         printHelp(topic)
 
@@ -416,6 +481,9 @@ func render(_ response: WireResponse, mode: RenderMode) throws {
 
     case .daemonStart:
         print("running")
+
+    case .daemonLogPath:
+        print(WBConfig.current().logPath)
 
     case .browserID:
         print(try response.browser.unwrap("daemon did not return a browser id"))
@@ -467,6 +535,8 @@ func printHelp(_ topic: HelpTopic) {
           wb list
           wb close <id>
           wb dump <id>
+          wb show <id>
+          wb hide <id>
 
           wb page <id> [--fields <list>] [--selectors|--action-details]
           wb click <id> <action>
@@ -474,7 +544,7 @@ func printHelp(_ topic: HelpTopic) {
           wb submit <id> <action>
           wb eval <id> [--body] <javascript>
 
-          wb daemon <start|status|stop>
+          wb daemon <start|status|log|stop>
 
         Options:
           -h, --help            Show help.
@@ -516,6 +586,22 @@ func printHelp(_ topic: HelpTopic) {
           wb dump <id>
 
         Saves the browser so it can be resumed later.
+        """)
+
+    case .show:
+        print("""
+        Usage:
+          wb show <id>
+
+        Shows a lightweight browser window for the browser.
+        """)
+
+    case .hide:
+        print("""
+        Usage:
+          wb hide <id>
+
+        Hides the browser window without closing the browser.
         """)
 
     case .page:
@@ -578,6 +664,7 @@ func printHelp(_ topic: HelpTopic) {
         Usage:
           wb daemon start [--idle-timeout <seconds|off>]
           wb daemon status
+          wb daemon log
           wb daemon stop
 
         Controls the local browser daemon.
@@ -600,6 +687,14 @@ func printHelp(_ topic: HelpTopic) {
           wb daemon status
 
         Prints 'running' or 'not running'.
+        """)
+
+    case .daemonLog:
+        print("""
+        Usage:
+          wb daemon log
+
+        Prints the daemon log file path.
         """)
 
     case .daemonStop:

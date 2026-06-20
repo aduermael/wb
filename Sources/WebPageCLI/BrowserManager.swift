@@ -16,9 +16,12 @@ final class BrowserManager: @unchecked Sendable {
     func handleWireData(_ data: Data) async -> Data {
         do {
             let request = try JSONDecoder().decode(WireRequest.self, from: data)
+            daemonLog("request command=\(request.command.rawValue) browser=\(request.browser ?? "-")")
             let response = try await handle(request)
+            daemonLog("response command=\(request.command.rawValue) ok=\(response.ok) browser=\(response.browser ?? "-")")
             return try WireCodec.encode(response)
         } catch {
+            daemonLog("request failed error=\(error.localizedDescription)")
             return WireCodec.encodeError(error.localizedDescription)
         }
     }
@@ -30,6 +33,8 @@ final class BrowserManager: @unchecked Sendable {
 
         case .browserCreate:
             let browser = createBrowser()
+            scheduleAutosave(browser, reason: "create")
+            daemonLog("browser created id=\(browser.id)")
             return .success(browser: browser.id)
 
         case .browserList:
@@ -37,15 +42,18 @@ final class BrowserManager: @unchecked Sendable {
 
         case .browserClose:
             let id = try request.requiredBrowserID()
-            let removedActive = browsers.removeValue(forKey: id) != nil
+            let removedBrowser = browsers.removeValue(forKey: id)
+            removedBrowser?.closeWindow()
+            let removedActive = removedBrowser != nil
             let removedDump = sessionStore.exists(id)
             if removedDump {
                 try sessionStore.delete(id)
             }
 
             guard removedActive || removedDump else {
-                throw WBError.message("unknown browser \(id)")
+                throw unknownBrowser(id)
             }
+            daemonLog("browser closed id=\(id) removedActive=\(removedActive) removedDump=\(removedDump)")
             return .success(browser: id, message: "closed")
 
         case .browserDump:
@@ -56,10 +64,19 @@ final class BrowserManager: @unchecked Sendable {
             }
 
             guard sessionStore.exists(id) else {
-                throw WBError.message("unknown browser \(id)")
+                throw unknownBrowser(id)
             }
             _ = try sessionStore.load(id)
             return .success(browser: id, message: "already dumped")
+
+        case .browserShow:
+            let browser = try await showBrowser(request.browser)
+            return .success(browser: browser.id)
+
+        case .browserHide:
+            let browser = try await requireBrowser(request.browser)
+            browser.hideWindow()
+            return .success(browser: browser.id)
 
         case .open:
             let url = try request.requiredURL()
@@ -68,11 +85,16 @@ final class BrowserManager: @unchecked Sendable {
             do {
                 page = try await browserState.browser.open(url)
             } catch {
+                daemonLog(
+                    "open failed browser=\(browserState.browser.id) removeOnFailure=\(browserState.removeOnFailure) " +
+                    "error=\(error.localizedDescription)"
+                )
                 if browserState.removeOnFailure {
                     browsers.removeValue(forKey: browserState.browser.id)
                 }
                 throw error
             }
+            scheduleAutosave(browserState.browser, reason: "open")
             return .success(browser: browserState.browser.id, page: page)
 
         case .page:
@@ -84,6 +106,7 @@ final class BrowserManager: @unchecked Sendable {
             let browser = try await requireBrowser(request.browser)
             let action = try request.requiredAction()
             let result = try await browser.click(action)
+            scheduleAutosave(browser, reason: "click")
             return .success(browser: browser.id, page: result.page, message: result.message)
 
         case .fill:
@@ -91,12 +114,14 @@ final class BrowserManager: @unchecked Sendable {
             let action = try request.requiredAction()
             let value = try request.requiredValue()
             let result = try await browser.fill(action, value: value)
+            scheduleAutosave(browser, reason: "fill")
             return .success(browser: browser.id, page: result.page, message: result.message)
 
         case .submit:
             let browser = try await requireBrowser(request.browser)
             let action = try request.requiredAction()
             let result = try await browser.submit(action)
+            scheduleAutosave(browser, reason: "submit")
             return .success(browser: browser.id, page: result.page, message: result.message)
 
         case .eval:
@@ -108,11 +133,14 @@ final class BrowserManager: @unchecked Sendable {
             } else {
                 value = try await browser.evaluateExpression(script)
             }
+            scheduleAutosave(browser, reason: "eval")
             return .success(browser: browser.id, value: value)
 
         case .daemonStop:
+            daemonLog("daemon stop requested")
             try await dumpAllSessions()
             DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.2) {
+                daemonLog("daemon exiting after stop request")
                 Darwin.exit(0)
             }
             return .success(message: "stopping daemon")
@@ -120,12 +148,21 @@ final class BrowserManager: @unchecked Sendable {
     }
 
     func dumpAllSessions() async throws {
+        daemonLog("dump all sessions count=\(browsers.count)")
         for browser in Array(browsers.values) {
             guard browsers[browser.id] != nil else {
                 continue
             }
             _ = try await dump(browser)
         }
+        daemonLog("dump all sessions complete")
+    }
+
+    func browserIDsKeepingDaemonAlive() -> [String] {
+        browsers.values
+            .filter { $0.keepsDaemonAlive }
+            .map(\.id)
+            .sorted()
     }
 
     private func createBrowser(id requestedID: String? = nil, createdAt: Date = Date(), updatedAt: Date = Date()) -> BrowserInstance {
@@ -133,6 +170,7 @@ final class BrowserManager: @unchecked Sendable {
 
         let browser = BrowserInstance(id: id, createdAt: createdAt, updatedAt: updatedAt)
         browsers[id] = browser
+        daemonLog("browser instance registered id=\(id)")
         return browser
     }
 
@@ -152,18 +190,21 @@ final class BrowserManager: @unchecked Sendable {
 
     private func browserForOpen(id: String?) throws -> (browser: BrowserInstance, removeOnFailure: Bool) {
         guard let id else {
+            daemonLog("open requested without browser; creating temporary removable browser")
             return (createBrowser(), true)
         }
 
         if let browser = browsers[id] {
+            daemonLog("open using active browser id=\(id)")
             return (browser, false)
         }
 
         guard sessionStore.exists(id) else {
-            throw WBError.message("unknown browser \(id)")
+            throw unknownBrowser(id)
         }
 
         let dump = try sessionStore.load(id)
+        daemonLog("open using dumped browser id=\(id)")
         let browser = createBrowser(
             id: dump.browser,
             createdAt: dump.createdDate,
@@ -183,11 +224,28 @@ final class BrowserManager: @unchecked Sendable {
         }
 
         guard sessionStore.exists(id) else {
-            throw WBError.message("unknown browser \(id)")
+            throw unknownBrowser(id)
         }
 
         let dump = try sessionStore.load(id)
         return try await resume(dump)
+    }
+
+    private func showBrowser(_ id: String?) async throws -> BrowserInstance {
+        let id = try id.nilIfEmpty.unwrap("missing browser id")
+        if let browser = browsers[id] {
+            browser.showWindow()
+            daemonLog("show active browser id=\(id)")
+            return browser
+        }
+
+        guard sessionStore.exists(id) else {
+            throw unknownBrowser(id)
+        }
+
+        let dump = try sessionStore.load(id)
+        daemonLog("show dumped browser id=\(id)")
+        return try await resume(dump, showingWindow: true)
     }
 
     private func summaries() throws -> [BrowserSummary] {
@@ -207,32 +265,74 @@ final class BrowserManager: @unchecked Sendable {
     }
 
     private func dump(_ browser: BrowserInstance) async throws -> BrowserDump {
+        daemonLog("dump browser id=\(browser.id)")
         let dump = await browser.dump()
         try sessionStore.save(dump)
+        daemonLog("dump saved id=\(browser.id) url=\(dump.url ?? "-")")
         return dump
     }
 
-    private func resume(_ dump: BrowserDump) async throws -> BrowserInstance {
+    private func scheduleAutosave(_ browser: BrowserInstance, reason: String) {
+        Task { @MainActor in
+            await autosave(browser, reason: reason)
+        }
+    }
+
+    private func autosave(_ browser: BrowserInstance, reason: String) async {
+        daemonLog("autosave start id=\(browser.id) reason=\(reason)")
+        do {
+            _ = try await dump(browser)
+            daemonLog("autosave complete id=\(browser.id) reason=\(reason)")
+        } catch {
+            daemonLog("autosave failed id=\(browser.id) reason=\(reason) error=\(error.localizedDescription)")
+        }
+    }
+
+    private func unknownBrowser(_ id: String) -> WBError {
+        let activeIDs = browsers.keys.sorted().joined(separator: ",").nilIfEmpty ?? "-"
+        let dumpedIDs = sessionStore.browserIDs().joined(separator: ",").nilIfEmpty ?? "-"
+        daemonLog(
+            "unknown browser id=\(id) active=\(activeIDs) dumped=\(dumpedIDs) " +
+            "sessions=\(sessionStore.directory.path)"
+        )
+        return WBError.message("unknown browser \(id)")
+    }
+
+    private func resume(_ dump: BrowserDump, showingWindow: Bool = false) async throws -> BrowserInstance {
         if let browser = browsers[dump.browser] {
+            if showingWindow {
+                browser.showWindow()
+            }
+            daemonLog("resume skipped active id=\(dump.browser) showingWindow=\(showingWindow)")
             return browser
         }
 
+        daemonLog("resume start id=\(dump.browser) showingWindow=\(showingWindow) url=\(dump.url ?? dump.snapshot?.url ?? "-")")
         let browser = createBrowser(
             id: dump.browser,
             createdAt: dump.createdDate,
             updatedAt: dump.updatedDate
         )
 
+        if showingWindow {
+            browser.showWindow()
+        }
+
         let resumeURL = dump.url ?? dump.snapshot.flatMap { $0.url }
         guard let rawURL = resumeURL.nilIfEmpty,
               let url = URL(string: rawURL) else {
+            daemonLog("resume has no URL id=\(dump.browser)")
             return browser
         }
 
         do {
             _ = try await browser.open(url)
+            scheduleAutosave(browser, reason: showingWindow ? "show-resume" : "resume")
+            daemonLog("resume loaded id=\(dump.browser) url=\(rawURL)")
             return browser
         } catch {
+            daemonLog("resume failed id=\(dump.browser) error=\(error.localizedDescription)")
+            browser.closeWindow()
             browsers.removeValue(forKey: dump.browser)
             throw error
         }
@@ -246,6 +346,7 @@ private final class BrowserInstance {
 
     private let page = WebPage()
     private var actions: [BrowserAction] = []
+    private var windowController: BrowserWindowController?
     private let createdAt: Date
     private var updatedAt: Date
 
@@ -256,6 +357,7 @@ private final class BrowserInstance {
     }
 
     func open(_ url: URL) async throws -> PageSnapshot {
+        daemonLog("browser open start id=\(id) url=\(url.absoluteString)")
         actions.removeAll()
 
         var request = URLRequest(url: url)
@@ -265,7 +367,9 @@ private final class BrowserInstance {
         await settle()
         updatedAt = Date()
 
-        return try await snapshot()
+        let pageSnapshot = try await snapshot()
+        daemonLog("browser open complete id=\(id) url=\(pageSnapshot.url ?? "-") title=\(pageSnapshot.title)")
+        return pageSnapshot
     }
 
     func snapshot() async throws -> PageSnapshot {
@@ -353,6 +457,7 @@ private final class BrowserInstance {
             loading: page.isLoading,
             progress: page.estimatedProgress,
             actions: actions.count,
+            visible: isWindowVisible ? true : nil,
             createdAt: createdAt.iso8601String,
             updatedAt: updatedAt.iso8601String,
             dumped: nil,
@@ -361,6 +466,7 @@ private final class BrowserInstance {
     }
 
     func dump() async -> BrowserDump {
+        daemonLog("browser dump snapshot start id=\(id) url=\(page.url?.absoluteString ?? "-")")
         let currentSnapshot: PageSnapshot?
         if page.url == nil {
             currentSnapshot = nil
@@ -369,7 +475,7 @@ private final class BrowserInstance {
         }
         let snapshotURL = currentSnapshot.flatMap { $0.url }
 
-        return BrowserDump(
+        let dump = BrowserDump(
             schemaVersion: 1,
             browser: id,
             title: (currentSnapshot?.title ?? page.title).nilIfEmpty,
@@ -382,6 +488,35 @@ private final class BrowserInstance {
             dumpedAt: Date().iso8601String,
             snapshot: currentSnapshot
         )
+        daemonLog("browser dump snapshot complete id=\(id) url=\(dump.url ?? "-") snapshot=\(currentSnapshot != nil)")
+        return dump
+    }
+
+    var isWindowVisible: Bool {
+        windowController?.isVisible == true
+    }
+
+    var keepsDaemonAlive: Bool {
+        windowController?.keepsDaemonAlive == true
+    }
+
+    func showWindow() {
+        daemonLog("browser show window id=\(id)")
+        if windowController == nil {
+            windowController = BrowserWindowController(browserID: id, page: page)
+        }
+        windowController?.show()
+    }
+
+    func hideWindow() {
+        daemonLog("browser hide window id=\(id)")
+        windowController?.hide()
+    }
+
+    func closeWindow() {
+        daemonLog("browser close window id=\(id)")
+        windowController?.close()
+        windowController = nil
     }
 
     private func ensureActions() async throws {

@@ -20,15 +20,25 @@ struct WBConfig: Sendable {
         return "/tmp/wb-webpage-\(Darwin.getuid())-\(Self.pathHash(directory.path)).sock"
     }
 
+    var logPath: String {
+        let environment = ProcessInfo.processInfo.environment
+        return environment["WB_LOG"].nilIfEmpty
+            ?? environment["WP_LOG"].nilIfEmpty
+            ?? "/tmp/wb-webpage-\(Darwin.getuid()).log"
+    }
+
     static func current(idleTimeout: TimeInterval? = nil) -> WBConfig {
         let environment = ProcessInfo.processInfo.environment
-        let rawDirectory = environment["WB_DIR"].nilIfEmpty ?? environment["WP_DIR"].nilIfEmpty ?? "wb"
         let baseURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
         let directory: URL
-        if rawDirectory.hasPrefix("/") {
-            directory = URL(fileURLWithPath: rawDirectory, isDirectory: true)
+        if let rawDirectory = environment["WB_DIR"].nilIfEmpty ?? environment["WP_DIR"].nilIfEmpty {
+            if rawDirectory.hasPrefix("/") {
+                directory = URL(fileURLWithPath: rawDirectory, isDirectory: true)
+            } else {
+                directory = baseURL.appendingPathComponent(rawDirectory, isDirectory: true)
+            }
         } else {
-            directory = baseURL.appendingPathComponent(rawDirectory, isDirectory: true)
+            directory = defaultDirectory(baseURL: baseURL)
         }
 
         return WBConfig(
@@ -38,6 +48,17 @@ struct WBConfig: Sendable {
                 ?? parseIdleTimeout(environment["WP_IDLE_SECONDS"])
                 ?? defaultIdleTimeout
         )
+    }
+
+    private static func defaultDirectory(baseURL: URL) -> URL {
+        let legacyURL = baseURL.appendingPathComponent("wb", isDirectory: true)
+        var isDirectory = ObjCBool(false)
+        if FileManager.default.fileExists(atPath: legacyURL.path, isDirectory: &isDirectory),
+           isDirectory.boolValue {
+            return legacyURL
+        }
+
+        return baseURL.appendingPathComponent(".wb", isDirectory: true)
     }
 
     static func parseIdleTimeout(_ rawValue: String?) -> TimeInterval? {
@@ -97,15 +118,28 @@ struct SessionStore: Sendable {
     }
 
     func save(_ dump: BrowserDump) throws {
-        try FileManager.default.createDirectory(
-            at: directory,
-            withIntermediateDirectories: true
-        )
+        do {
+            try FileManager.default.createDirectory(
+                at: directory,
+                withIntermediateDirectories: true
+            )
+        } catch {
+            throw WBError.message(
+                "failed to create session directory \(directory.path): \(error.localizedDescription)"
+            )
+        }
 
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         let data = try encoder.encode(dump)
-        try data.write(to: fileURL(for: dump.browser), options: [.atomic])
+        let destination = try fileURL(for: dump.browser)
+        do {
+            try data.write(to: destination, options: [.atomic])
+        } catch {
+            throw WBError.message(
+                "failed to save browser \(dump.browser) to \(destination.path): \(error.localizedDescription)"
+            )
+        }
     }
 
     func delete(_ browser: String) throws {
@@ -183,6 +217,7 @@ struct BrowserDump: Codable, Sendable {
             loading: loading,
             progress: progress,
             actions: snapshot?.actions.count ?? actions,
+            visible: nil,
             createdAt: createdAt,
             updatedAt: updatedAt,
             dumped: true,
