@@ -1,7 +1,10 @@
+# SwiftPM build and workspace artifacts
 .build/
 .swiftpm/
+
+# Local runtime/debug artifacts
 .DS_Store
 .wb/
 debug.log
-wb
+/wb
 wp/
