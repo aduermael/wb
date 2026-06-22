@@ -81,13 +81,18 @@ func renderedOutput(_ response: WireResponse, mode: RenderMode) throws -> String
 	}
 }
 
-func runLocalCommand(_ command: LocalCommand) throws {
-	let config = WBConfig.current()
-	let environment = try WBEnvironment.loadOrCreate(in: config.directory)
-
+func runLocalCommand(_ command: LocalCommand) async throws {
 	switch command {
 	case .environment:
+		let config = WBConfig.current()
+		let environment = try WBEnvironment.loadOrCreate(in: config.directory)
 		try printJSON(environment.metadata)
+
+	case .update:
+		try await WBUpdater.runUpdate()
+
+	case .version:
+		print(WBVersion.current)
 	}
 }
 

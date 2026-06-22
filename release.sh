@@ -113,6 +113,27 @@ if [ -z "$archs" ]; then
 fi
 
 dist="dist/$tag"
+version_file="$script_dir/Sources/WebPageCLI/Version.swift"
+version_backup=""
+
+restore_release_version() {
+  if [ -n "$version_backup" ] && [ -f "$version_backup" ]; then
+    cp "$version_backup" "$version_file"
+    rm -f "$version_backup"
+    version_backup=""
+  fi
+}
+
+stamp_release_version() {
+  version="$1"
+  version_backup="$(mktemp "${TMPDIR:-/tmp}/wb-version.XXXXXX")"
+  cp "$version_file" "$version_backup"
+  trap restore_release_version EXIT INT HUP TERM
+  escaped_version="$(printf '%s\n' "$version" | sed 's/[\/&]/\\&/g')"
+  tmp_file="$version_file.tmp"
+  sed "s/static let current = \"[^\"]*\"/static let current = \"$escaped_version\"/" "$version_file" > "$tmp_file"
+  mv "$tmp_file" "$version_file"
+}
 
 require_release_git_state() {
   need_cmd git
@@ -153,10 +174,11 @@ build_release() {
 
   rm -rf "$dist"
   mkdir -p "$dist"
+  stamp_release_version "${tag#v}"
 
   for arch in $archs; do
     echo "Building wb for macOS $arch..."
-    swift build -c release --arch "$arch"
+    swift build -c release --arch "$arch" -Xswiftc -warnings-as-errors
 
     bin_dir="$(swift build -c release --arch "$arch" --show-bin-path)"
     bin="$bin_dir/wb"
@@ -177,6 +199,7 @@ build_release() {
     rm -rf "$asset_dir"
   done
 
+  restore_release_version
   echo "Built release assets in $dist"
 }
 

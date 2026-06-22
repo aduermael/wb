@@ -41,6 +41,8 @@ struct DaemonLaunch {
 
 enum LocalCommand {
 	case environment
+	case update
+	case version
 }
 
 enum RenderMode {
@@ -61,6 +63,8 @@ enum RenderMode {
 enum HelpTopic {
 	case root
 	case environment
+	case update
+	case version
 	case create
 	case list
 	case close
@@ -100,6 +104,13 @@ struct CLIParser {
 		if arguments.first == "--help" || arguments.first == "-h" {
 			return help(.root)
 		}
+		if arguments.first == "--version" || arguments.first == "-V" {
+			arguments.removeFirst()
+			guard arguments.isEmpty else {
+				throw WBError.message("unexpected version argument \(arguments[0])")
+			}
+			return CLIInvocation(localCommand: .version, renderMode: .silent)
+		}
 
 		guard let command = arguments.first else {
 			return help(.root)
@@ -119,6 +130,24 @@ struct CLIParser {
 				throw WBError.message("unexpected env argument \(arguments[0])")
 			}
 			return CLIInvocation(localCommand: .environment, renderMode: .silent)
+
+		case "update":
+			if arguments.containsHelpFlag {
+				return help(.update)
+			}
+			guard arguments.isEmpty else {
+				throw WBError.message("unexpected update argument \(arguments[0])")
+			}
+			return CLIInvocation(localCommand: .update, renderMode: .silent)
+
+		case "version":
+			if arguments.containsHelpFlag {
+				return help(.version)
+			}
+			guard arguments.isEmpty else {
+				throw WBError.message("unexpected version argument \(arguments[0])")
+			}
+			return CLIInvocation(localCommand: .version, renderMode: .silent)
 
 		case "create":
 			if arguments.containsHelpFlag {
@@ -446,6 +475,10 @@ struct CLIParser {
 		switch command {
 		case "env", "environment":
 			return help(.environment)
+		case "update":
+			return help(.update)
+		case "version":
+			return help(.version)
 		case "create":
 			return help(.create)
 		case "list", "ls":

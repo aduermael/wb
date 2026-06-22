@@ -67,6 +67,8 @@ To install a specific release:
 curl -fsSL https://raw.githubusercontent.com/aduermael/wb/main/install.sh | env WB_VERSION=0.1.0 sh
 ```
 
+Release builds check for a newer version at most once every 12 hours and print an update notice to stderr when stale. Run `wb update` to upgrade; Homebrew installs delegate to `brew update` and `brew upgrade wb`, while standalone installs replace the current binary.
+
 ## Quick Start
 
 ```bash
@@ -113,7 +115,7 @@ To build from source:
 ## Build From Source
 
 ```bash
-swift build
+swift build -Xswiftc -warnings-as-errors
 .build/debug/wb create
 ```
 
@@ -156,7 +158,8 @@ Check formatting and repository-specific lint rules:
 ```
 
 The app target is macOS-only because it uses AppKit and WebKit, so the full test
-suite runs in macOS CI.
+suite runs in macOS CI. `build.sh`, `test.sh`, `lint.sh`, and release builds
+compile Swift with warnings treated as errors.
 
 ## Agent Skill
 
@@ -180,6 +183,8 @@ Use `wb page --help` to see filterable fields. Use `wb page <id> --fields title,
 
 - `wb create`: create an empty browser and print its ID.
 - `wb env`: print public metadata for the current `.wb` environment.
+- `wb update`: update the CLI to the latest release.
+- `wb version`: print the CLI version.
 - `wb <url>`: create a browser, load the page, and print a compact summary.
 - `wb <id> <url>`: load a page in an existing browser.
 - `wb list`: print active and saved browser summaries as compact JSON.

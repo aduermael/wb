@@ -13,4 +13,4 @@ swift format lint \
 	"$script_dir/Tests" \
 	"$script_dir/Tools"
 
-swift run --quiet --package-path "$script_dir" wblint "$script_dir"
+swift run --quiet --package-path "$script_dir" -Xswiftc -warnings-as-errors wblint "$script_dir"

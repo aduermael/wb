@@ -39,6 +39,9 @@ public enum WBMain {
 		}
 
 		let invocation = try CLIParser.parse(arguments)
+		if shouldCheckForUpdates(invocation) {
+			await WBUpdater.maybePrintStaleNotice()
+		}
 
 		switch invocation.renderMode {
 		case .help(let topic):
@@ -53,7 +56,7 @@ public enum WBMain {
 
 		default:
 			if let localCommand = invocation.localCommand {
-				try runLocalCommand(localCommand)
+				try await runLocalCommand(localCommand)
 				return
 			}
 
@@ -70,6 +73,18 @@ public enum WBMain {
 				throw error
 			}
 			try render(response, mode: invocation.renderMode)
+		}
+	}
+
+	private static func shouldCheckForUpdates(_ invocation: CLIInvocation) -> Bool {
+		if case .help = invocation.renderMode {
+			return false
+		}
+		switch invocation.localCommand {
+		case .some(.update), .some(.version):
+			return false
+		case .some(.environment), .none:
+			return true
 		}
 	}
 }
