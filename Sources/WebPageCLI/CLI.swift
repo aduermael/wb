@@ -34,7 +34,6 @@ enum RenderMode {
     case daemonLogPath
     case browserID
     case browsers
-    case browserMessage
     case pageSummary
     case page(PageOutputOptions)
     case interaction
@@ -48,7 +47,6 @@ enum HelpTopic {
     case create
     case list
     case close
-    case dump
     case show
     case hide
     case screenshot
@@ -152,24 +150,6 @@ struct CLIParser {
             return CLIInvocation(
                 request: WireRequest(command: .browserClose, browser: id),
                 renderMode: .message,
-                startDaemon: true,
-                daemonIdleTimeout: nil
-            )
-
-        case "dump":
-            if arguments.containsHelpFlag {
-                return help(.dump)
-            }
-            let id = try popBrowserID(
-                from: &arguments,
-                usage: "usage: wb dump <id>"
-            )
-            guard arguments.isEmpty else {
-                throw WBError.message("unexpected dump argument \(arguments[0])")
-            }
-            return CLIInvocation(
-                request: WireRequest(command: .browserDump, browser: id),
-                renderMode: .browserMessage,
                 startDaemon: true,
                 daemonIdleTimeout: nil
             )
@@ -467,8 +447,6 @@ struct CLIParser {
             return help(.list)
         case "close", "delete", "rm":
             return help(.close)
-        case "dump":
-            return help(.dump)
         case "show":
             return help(.show)
         case "hide":
@@ -676,12 +654,6 @@ func render(_ response: WireResponse, mode: RenderMode) throws {
     case .browsers:
         try printJSON(response.browsers ?? [])
 
-    case .browserMessage:
-        try printJSON(BrowserMessageOutput(
-            browser: response.browser,
-            message: response.message
-        ))
-
     case .pageSummary:
         let page = try response.page.unwrap("daemon did not return page data")
         try printJSON(PageSummaryOutput(
@@ -730,7 +702,6 @@ func printHelp(_ topic: HelpTopic) {
           wb create
           wb list
           wb close <id>
-          wb dump <id>
           wb show <id>
           wb hide <id>
           wb screenshot <id> <destination.png|destination.jpg>
@@ -754,7 +725,7 @@ func printHelp(_ topic: HelpTopic) {
         Notes:
           - Browsers persist between commands; use wb list to see saved IDs.
           - Environment state is stored in .wb next to the nearest .git directory.
-          - Dumped browser IDs resume automatically when used.
+          - Saved browser IDs resume automatically when used.
           - JSON output is compact and omits empty, null, and most false fields.
           - Run 'wb <command> --help' for command details.
         """)
@@ -784,7 +755,7 @@ func printHelp(_ topic: HelpTopic) {
         Usage:
           wb list
 
-        Lists active and dumped browsers as compact JSON.
+        Lists active and saved browsers as compact JSON.
         """)
 
     case .close:
@@ -792,15 +763,7 @@ func printHelp(_ topic: HelpTopic) {
         Usage:
           wb close <id>
 
-        Closes an active browser and deletes any dumped session for that ID.
-        """)
-
-    case .dump:
-        print("""
-        Usage:
-          wb dump <id>
-
-        Saves the browser so it can be resumed later.
+        Closes an active browser and deletes any saved session for that ID.
         """)
 
     case .show:
@@ -967,14 +930,9 @@ func printHelp(_ topic: HelpTopic) {
         Usage:
           wb daemon stop
 
-        Dumps active browsers and stops the daemon.
+        Saves active browsers and stops the daemon.
         """)
     }
-}
-
-private struct BrowserMessageOutput: Encodable {
-    let browser: String?
-    let message: String?
 }
 
 private struct CommandErrorOutput: Encodable {

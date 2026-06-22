@@ -1,7 +1,7 @@
 import Foundation
 
 enum WireProtocol {
-    static let version = 28
+    static let version = 29
 }
 
 enum WireCommand: String, Codable, Equatable, Sendable {
@@ -9,7 +9,6 @@ enum WireCommand: String, Codable, Equatable, Sendable {
     case browserCreate
     case browserList
     case browserClose
-    case browserDump
     case browserShow
     case browserHide
     case open

@@ -66,19 +66,6 @@ final class BrowserManager: @unchecked Sendable {
             daemonLog("browser closed id=\(id) removedActive=\(removedActive) removedDump=\(removedDump)")
             return .success(browser: id, message: "closed")
 
-        case .browserDump:
-            let id = try request.requiredBrowserID()
-            if let browser = browsers[id] {
-                _ = try await dump(browser)
-                return .success(browser: id, message: "dumped")
-            }
-
-            guard sessionStore.exists(id) else {
-                throw unknownBrowser(id)
-            }
-            _ = try sessionStore.load(id)
-            return .success(browser: id, message: "already dumped")
-
         case .browserShow:
             let browser = try await showBrowser(request.browser)
             return .success(browser: browser.id)

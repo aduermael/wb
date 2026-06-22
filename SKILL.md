@@ -38,9 +38,8 @@ wb "$id" https://example.com
 - `wb env`: print public metadata for the current `.wb` environment.
 - `wb <url>`: create a browser, load the page, and print a compact summary.
 - `wb <id> <url>`: load a page in an existing browser.
-- `wb list`: list active and dumped browsers as compact JSON.
-- `wb close <id>`: close the browser and delete any dumped session for that ID.
-- `wb dump <id>`: save the browser so it can be resumed later.
+- `wb list`: list active and saved browsers as compact JSON.
+- `wb close <id>`: close the browser and delete any saved session for that ID.
 - `wb show <id>` / `wb hide <id>`: show or hide a lightweight browser window.
 - `wb screenshot <id> <path.png|path.jpg>`: capture the current viewport.
 - `wb page <id> [--fields <list>] [--selectors|--action-details]`: print page JSON.

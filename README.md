@@ -131,9 +131,8 @@ Use `wb page --help` to see filterable fields. Use `wb page <id> --fields title,
 - `wb env`: print public metadata for the current `.wb` environment.
 - `wb <url>`: create a browser, load the page, and print a compact summary.
 - `wb <id> <url>`: load a page in an existing browser.
-- `wb list`: print active and dumped browser summaries as compact JSON.
-- `wb close <id>`: close an active browser and delete any dumped session for that ID.
-- `wb dump <id>`: save the browser so it can be resumed later.
+- `wb list`: print active and saved browser summaries as compact JSON.
+- `wb close <id>`: close an active browser and delete any saved session for that ID.
 - `wb show <id>`: show a lightweight browser window for the browser.
 - `wb hide <id>`: hide the browser window without closing the browser.
 - `wb screenshot <id> <destination.png|destination.jpg>`: capture the current browser viewport as PNG or JPEG, selected by extension.
