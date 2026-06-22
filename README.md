@@ -147,7 +147,7 @@ In this checkout, `.agents/skills/wb`, `.claude/skills/wb`, and `.grok/skills/wb
 
 ## Output
 
-`wb` keeps structured CLI JSON compact by default. JSON is emitted on one line and omits fields that do not add information: `null`, most `false` values, empty strings, empty arrays, and empty objects. Error responses preserve `ok:false`. Raw `eval` results are printed as returned strings.
+`wb` keeps structured CLI JSON compact by default. JSON is emitted on one line and omits fields with default values. Error responses preserve `ok:false`. Raw `eval` results are printed as returned strings.
 
 Commands avoid returning a full page snapshot unless explicitly asked. Use `wb <url>` or `wb <id> <url>` for a compact summary containing the browser ID, title, URL, loading/progress, action count, image count, full-document HTML byte count, and default page JSON byte count. Use `wb page <id>` when you need visible text, the full action list, and image URLs.
 

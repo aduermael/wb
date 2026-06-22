@@ -60,7 +60,7 @@ Run `wb <command> --help` when command syntax is uncertain.
 
 ## Page JSON
 
-`wb` emits compact one-line JSON. Empty strings, empty arrays, empty objects, `null`, and most `false` values are omitted. Treat omitted fields as their zero value when filtering.
+`wb` emits compact one-line JSON. Fields with default values are omitted; treat omitted fields as defaults when filtering.
 
 Top-level `wb page` fields are:
 

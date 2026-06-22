@@ -7,6 +7,8 @@ func printHelp(_ topic: HelpTopic) {
 	switch topic {
 	case .root:
 		print("""
+        wb is a browser CLI for headless, persistent, and scriptable web sessions.
+
         Usage:
           wb [<id>] <url>
           wb env
@@ -35,11 +37,9 @@ func printHelp(_ topic: HelpTopic) {
 
         Notes:
           - Browsers persist between commands; use wb list to see saved IDs.
-          - Environment state is stored in .wb next to the nearest .git directory.
-          - Saved browser IDs resume automatically when used.
-          - JSON output is compact and omits empty, null, and most false fields.
+          - JSON output is compact; fields with default values are omitted.
           - Run 'wb <command> --help' for command details.
-		""")
+        """)
 
 	case .environment:
 		print("""
@@ -51,7 +51,7 @@ func printHelp(_ topic: HelpTopic) {
         By default, wb uses .wb next to the nearest parent .git directory.
         Outside a git checkout, it uses .wb under the current directory.
         Set WB_DIR to override the environment directory.
-		""")
+        """)
 
 	case .create:
 		print("""
@@ -59,7 +59,7 @@ func printHelp(_ topic: HelpTopic) {
           wb create
 
         Creates an empty browser and prints its ID.
-		""")
+        """)
 
 	case .list:
 		print("""
@@ -67,7 +67,7 @@ func printHelp(_ topic: HelpTopic) {
           wb list
 
         Lists active and saved browsers as compact JSON.
-		""")
+        """)
 
 	case .close:
 		print("""
@@ -75,7 +75,7 @@ func printHelp(_ topic: HelpTopic) {
           wb close <id>
 
         Closes an active browser and deletes any saved session for that ID.
-		""")
+        """)
 
 	case .show:
 		print("""
@@ -83,7 +83,7 @@ func printHelp(_ topic: HelpTopic) {
           wb show <id>
 
         Shows a lightweight browser window for the browser.
-		""")
+        """)
 
 	case .hide:
 		print("""
@@ -91,7 +91,7 @@ func printHelp(_ topic: HelpTopic) {
           wb hide <id>
 
         Hides the browser window without closing the browser.
-		""")
+        """)
 
 	case .screenshot:
 		print("""
@@ -100,7 +100,7 @@ func printHelp(_ topic: HelpTopic) {
 
         Captures the current browser viewport and writes it to the destination path.
         The image format is selected from the destination extension.
-		""")
+        """)
 
 	case .page:
 		print("""
@@ -118,7 +118,7 @@ func printHelp(_ topic: HelpTopic) {
           - Default actions include index, kind, text, href, and disabled state.
           - Image entries include index and URL.
           - Use action numbers by default; use --action-details to get action IDs.
-		""")
+        """)
 
 	case .click:
 		print("""
@@ -131,7 +131,7 @@ func printHelp(_ topic: HelpTopic) {
 
         With x and y coordinates, clicks the viewport at that point.
         Coordinate clicks do not open a window; run wb show to observe the page.
-		""")
+        """)
 
 	case .press:
 		print("""
@@ -140,7 +140,7 @@ func printHelp(_ topic: HelpTopic) {
 
         Sends a page mouse-down event at the viewport coordinate.
         Coordinates use a top-left origin.
-		""")
+        """)
 
 	case .drag:
 		print("""
@@ -149,7 +149,7 @@ func printHelp(_ topic: HelpTopic) {
 
         Sends a page mouse-drag event to the viewport coordinate.
         Use after wb press and before wb release.
-		""")
+        """)
 
 	case .release:
 		print("""
@@ -158,7 +158,7 @@ func printHelp(_ topic: HelpTopic) {
 
         Sends a page mouse-up event at the viewport coordinate.
         Coordinates use a top-left origin.
-		""")
+        """)
 
 	case .scroll:
 		print("""
@@ -167,7 +167,7 @@ func printHelp(_ topic: HelpTopic) {
 
         Scrolls at the viewport coordinate without opening a window.
         Coordinates use a top-left origin; deltas use CSS pixel units.
-		""")
+        """)
 
 	case .fill:
 		print("""
@@ -176,7 +176,7 @@ func printHelp(_ topic: HelpTopic) {
 
         Sets the value of an input, textarea, select, or contenteditable action.
         <action> may be a 1-based number or an action ID.
-		""")
+        """)
 
 	case .submit:
 		print("""
@@ -185,7 +185,7 @@ func printHelp(_ topic: HelpTopic) {
 
         Submits the nearest form for an action, or clicks the action if no form exists.
         <action> may be a 1-based number or an action ID.
-		""")
+        """)
 
 	case .eval:
 		print("""
@@ -196,7 +196,7 @@ func printHelp(_ topic: HelpTopic) {
 
         Options:
           --body                Treat the script as a WebPage.callJavaScript body.
-		""")
+        """)
 
 	case .daemon:
 		print("""
@@ -207,7 +207,7 @@ func printHelp(_ topic: HelpTopic) {
           wb daemon stop
 
         Controls the local browser daemon.
-		""")
+        """)
 
 	case .daemonStart:
 		print("""
@@ -218,7 +218,7 @@ func printHelp(_ topic: HelpTopic) {
 
         Options:
           --idle-timeout <seconds|off>    Override idle shutdown for this daemon.
-		""")
+        """)
 
 	case .daemonStatus:
 		print("""
@@ -226,7 +226,7 @@ func printHelp(_ topic: HelpTopic) {
           wb daemon status
 
         Prints 'running' or 'not running'.
-		""")
+        """)
 
 	case .daemonLog:
 		print("""
@@ -234,7 +234,7 @@ func printHelp(_ topic: HelpTopic) {
           wb daemon log
 
         Prints the daemon log file path.
-		""")
+        """)
 
 	case .daemonStop:
 		print("""
@@ -242,6 +242,6 @@ func printHelp(_ topic: HelpTopic) {
           wb daemon stop
 
         Saves active browsers and stops the daemon.
-		""")
+        """)
 	}
 }
