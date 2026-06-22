@@ -45,6 +45,16 @@ To install only the CLI, use Homebrew:
 brew install aduermael/tap/wb
 ```
 
+After the npm package has been published, use npm:
+
+```bash
+npm install -g @aduermael_/wb
+```
+
+The npm package is a thin wrapper that downloads the prebuilt macOS release
+binary. It still requires macOS 26.0 or newer, and it does not require Xcode or
+a Swift toolchain.
+
 Or use the standalone installer:
 
 Prebuilt releases are macOS 26+ binaries. Installing them does not require Xcode or a Swift toolchain.

@@ -8,4 +8,5 @@ dist/
 .wb/
 debug.log
 /wb
+/npm/bin/wb
 wp/

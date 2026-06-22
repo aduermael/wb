@@ -5,14 +5,16 @@ script_dir=$(CDPATH= cd "$(dirname "$0")" && pwd)
 . "$script_dir/scripts/codesign-wb.sh"
 
 usage() {
-  echo "Usage: ./release.sh <version> [--build-only|--publish-only|--tap-only] [--repo owner/name] [--tap-repo owner/name|--no-tap] [arm64|x86_64 ...]" >&2
+  echo "Usage: ./release.sh <version> [--build-only|--publish-only|--tap-only|--npm-only] [--repo owner/name] [--tap-repo owner/name|--no-tap] [--no-npm] [--force-tag] [arm64|x86_64 ...]" >&2
   echo "Examples:" >&2
   echo "  ./release.sh 0.1.0" >&2
   echo "  ./release.sh 0.1.0 --build-only" >&2
   echo "  ./release.sh 0.1.0 --publish-only" >&2
   echo "  ./release.sh 0.1.0 --tap-only" >&2
+  echo "  ./release.sh 0.1.0 --npm-only" >&2
+  echo "  ./release.sh 0.1.0 --publish-only --force-tag" >&2
   echo "  ./release.sh 0.1.0 --build-only arm64" >&2
-  echo "  ./release.sh 0.1.0 --publish-only --no-tap" >&2
+  echo "  ./release.sh 0.1.0 --publish-only --no-tap --no-npm" >&2
   echo "" >&2
   echo "Signing environment:" >&2
   echo "  WB_CODESIGN_IDENTITY  Signing identity. Defaults to '-' for ad-hoc signing." >&2
@@ -32,7 +34,7 @@ need_cmd() {
 
 set_mode() {
   if [ "$mode" != "all" ] && [ "$mode" != "$1" ]; then
-    die "Choose only one of --build-only, --publish-only, or --tap-only."
+    die "Choose only one of --build-only, --publish-only, --tap-only, or --npm-only."
   fi
   mode="$1"
 }
@@ -40,6 +42,8 @@ set_mode() {
 mode="all"
 repo="${WB_REPO:-aduermael/wb}"
 tap_repo="${WB_TAP_REPO:-aduermael/homebrew-tap}"
+publish_npm=1
+force_tag=0
 input_version=""
 archs=""
 
@@ -57,6 +61,9 @@ while [ "$#" -gt 0 ]; do
       ;;
     --tap-only)
       set_mode "tap"
+      ;;
+    --npm-only)
+      set_mode "npm"
       ;;
     --repo)
       shift
@@ -80,6 +87,12 @@ while [ "$#" -gt 0 ]; do
       ;;
     --no-tap)
       tap_repo=""
+      ;;
+    --no-npm)
+      publish_npm=0
+      ;;
+    --force-tag)
+      force_tag=1
       ;;
     arm64|x86_64)
       archs="${archs}${archs:+ }$1"
@@ -115,6 +128,16 @@ fi
 if [ -z "$archs" ]; then
   archs="arm64 x86_64"
 fi
+
+if [ "$mode" = "npm" ] && [ "$publish_npm" = "0" ]; then
+  die "Cannot combine --npm-only with --no-npm."
+fi
+
+case "$mode:$force_tag" in
+  build:1|tap:1|npm:1)
+    die "--force-tag can only be used when publishing the GitHub release."
+    ;;
+esac
 
 dist="dist/$tag"
 version_file="$script_dir/Sources/WebPageCLI/Version.swift"
@@ -210,6 +233,11 @@ build_release() {
 ensure_tag() {
   head_sha="$(git rev-parse HEAD)"
 
+  if [ "$force_tag" = "1" ]; then
+    git tag -f -a "$tag" -m "$tag" "$head_sha"
+    return
+  fi
+
   if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
     tag_sha="$(git rev-list -n 1 "$tag")"
     if [ "$tag_sha" != "$head_sha" ]; then
@@ -228,6 +256,14 @@ ensure_tag() {
   fi
 
   git tag -a "$tag" -m "$tag"
+}
+
+push_release_tag() {
+  if [ "$force_tag" = "1" ]; then
+    git push --force origin "refs/tags/$tag"
+  else
+    git push origin "refs/tags/$tag"
+  fi
 }
 
 publish_release() {
@@ -249,7 +285,7 @@ publish_release() {
 
   git push origin main
   ensure_tag
-  git push origin "refs/tags/$tag"
+  push_release_tag
 
   if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
     gh release upload "$tag" $release_files --repo "$repo" --clobber
@@ -375,23 +411,61 @@ update_homebrew_tap() {
   echo "Updated Homebrew tap $tap_repo for $tag"
 }
 
-require_release_git_state
+publish_npm_package() {
+  if [ "$publish_npm" = "0" ]; then
+    return
+  fi
+
+  need_cmd awk
+  need_cmd gh
+  need_cmd node
+  need_cmd npm
+
+  release_checksum_for_arch arm64 >/dev/null
+  release_checksum_for_arch x86_64 >/dev/null
+
+  "$script_dir/scripts/prepare-npm-package.sh" "${tag#v}"
+
+  npm_stage="$script_dir/$dist/npm"
+  package_name="$(node -e "process.stdout.write(require(process.argv[1]).name)" "$npm_stage/package.json")"
+  package_version="${tag#v}"
+
+  npm pack --dry-run "$npm_stage" >/dev/null
+
+  published_version="$(npm view "$package_name@$package_version" version 2>/dev/null || true)"
+  if [ "$published_version" = "$package_version" ]; then
+    echo "npm package $package_name@$package_version is already published"
+    return
+  fi
+
+  npm publish "$npm_stage" --access public
+  echo "Published npm package $package_name@$package_version"
+}
 
 case "$mode" in
   all)
+    require_release_git_state
     need_cmd gh
     build_release
     publish_release
     update_homebrew_tap
+    publish_npm_package
     ;;
   build)
+    require_release_git_state
     build_release
     ;;
   publish)
+    require_release_git_state
     publish_release
     update_homebrew_tap
+    publish_npm_package
     ;;
   tap)
+    require_release_git_state
     update_homebrew_tap
+    ;;
+  npm)
+    publish_npm_package
     ;;
 esac
