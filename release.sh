@@ -178,9 +178,9 @@ build_release() {
 
   for arch in $archs; do
     echo "Building wb for macOS $arch..."
-    swift build -c release --arch "$arch" -Xswiftc -warnings-as-errors
+    swift build -c release --product wb --arch "$arch" -Xswiftc -warnings-as-errors
 
-    bin_dir="$(swift build -c release --arch "$arch" --show-bin-path)"
+    bin_dir="$(swift build -c release --product wb --arch "$arch" --show-bin-path)"
     bin="$bin_dir/wb"
     if [ ! -x "$bin" ]; then
       die "Build did not produce an executable wb at $bin"
