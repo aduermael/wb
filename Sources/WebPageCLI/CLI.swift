@@ -205,7 +205,8 @@ struct CLIParser {
 				from: &arguments,
 				usage: "usage: wb screenshot <id> <destination.png|destination.jpg>"
 			)
-			let destination = try arguments.popFirst("usage: wb screenshot <id> <destination.png|destination.jpg>")
+			let destination = try arguments.popFirst(
+				"usage: wb screenshot <id> <destination.png|destination.jpg>")
 			guard arguments.isEmpty else {
 				throw WBError.message("unexpected screenshot argument \(arguments[0])")
 			}

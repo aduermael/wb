@@ -1,6 +1,7 @@
 # wb
 
 [![Lint](https://github.com/aduermael/wb/actions/workflows/lint.yml/badge.svg)](https://github.com/aduermael/wb/actions/workflows/lint.yml)
+[![Tests](https://github.com/aduermael/wb/actions/workflows/test.yml/badge.svg)](https://github.com/aduermael/wb/actions/workflows/test.yml)
 
 `wb` is a macOS 26+ web browser for agents, exposed as a lightweight command-line tool.
 
@@ -133,11 +134,29 @@ Set `WB_CODESIGN=off` to skip signing for local debugging.
 
 ## Lint
 
+Format Swift source with the native Swift formatter:
+
+```bash
+./format.sh
+```
+
+Check formatting and repository-specific lint rules:
+
 ```bash
 ./lint.sh
 ```
 
-The linter is a Swift executable target and runs on both macOS and Linux.
+`lint.sh` first runs `swift format lint --strict`, then runs the custom SwiftPM
+`wblint` executable for rules that are specific to this repository.
+
+## Test
+
+```bash
+swift test
+```
+
+The app target is macOS-only because it uses AppKit and WebKit, so the full test
+suite runs in macOS CI.
 
 ## Agent Skill
 

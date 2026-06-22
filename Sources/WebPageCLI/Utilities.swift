@@ -79,7 +79,8 @@ func printable(_ value: Any?) -> String {
 
 	if JSONSerialization.isValidJSONObject(value),
 		let data = try? JSONSerialization.data(withJSONObject: value, options: [.prettyPrinted]),
-		let string = String(data: data, encoding: .utf8) {
+		let string = String(data: data, encoding: .utf8)
+	{
 		return string
 	}
 
@@ -105,7 +106,8 @@ func printError(_ message: String) {
 
 func daemonLog(_ message: String) {
 	let path = WBConfig.current().logPath
-	let sanitizedMessage = message
+	let sanitizedMessage =
+		message
 		.replacingOccurrences(of: "\r", with: " ")
 		.replacingOccurrences(of: "\n", with: " ")
 	let line = "[\(Date().iso8601String)] pid=\(Darwin.getpid()) \(sanitizedMessage)\n"

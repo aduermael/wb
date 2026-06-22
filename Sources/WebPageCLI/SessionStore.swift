@@ -123,7 +123,7 @@ struct WBEnvironment: Sendable {
 			try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
 		} catch {
 			throw WBError.message(
-                "failed to create environment directory \(directory.path): \(error.localizedDescription)"
+				"failed to create environment directory \(directory.path): \(error.localizedDescription)"
 			)
 		}
 
@@ -215,7 +215,7 @@ struct WBEnvironment: Sendable {
 			throw error
 		} catch {
 			throw WBError.message(
-                "failed to load environment UUID from \(fileURL.path): \(error.localizedDescription)"
+				"failed to load environment UUID from \(fileURL.path): \(error.localizedDescription)"
 			)
 		}
 	}
@@ -242,7 +242,8 @@ struct SessionStore: Sendable {
 			return []
 		}
 
-		return files
+		return
+			files
 			.map { $0.deletingPathExtension().lastPathComponent }
 			.filter(Self.isValidBrowserID)
 	}
@@ -273,7 +274,7 @@ struct SessionStore: Sendable {
 			)
 		} catch {
 			throw WBError.message(
-                "failed to create session directory \(directory.path): \(error.localizedDescription)"
+				"failed to create session directory \(directory.path): \(error.localizedDescription)"
 			)
 		}
 
@@ -285,7 +286,7 @@ struct SessionStore: Sendable {
 			try data.write(to: destination, options: [.atomic])
 		} catch {
 			throw WBError.message(
-                "failed to save browser \(dump.browser) to \(destination.path): \(error.localizedDescription)"
+				"failed to save browser \(dump.browser) to \(destination.path): \(error.localizedDescription)"
 			)
 		}
 	}

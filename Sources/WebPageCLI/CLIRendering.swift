@@ -5,57 +5,79 @@ import Foundation
 
 func render(_ response: WireResponse, mode: RenderMode) throws {
 	if !response.ok {
-		try printJSON(CommandErrorOutput(response: response))
+		if let output = try renderedOutput(response, mode: mode) {
+			print(output)
+		}
 		throw WBExit(code: 1)
 	}
 
+	if let output = try renderedOutput(response, mode: mode) {
+		print(output)
+		return
+	}
+
 	switch mode {
-	case .silent:
+	case .silent,
+		.daemonStatus:
 		break
 
 	case .help(let topic):
 		printHelp(topic)
-
-	case .daemonStatus:
+	default:
 		break
+	}
+}
+
+func renderedOutput(_ response: WireResponse, mode: RenderMode) throws -> String? {
+	if !response.ok {
+		return try compactJSONString(CommandErrorOutput(response: response))
+	}
+
+	switch mode {
+	case .silent,
+		.help,
+		.daemonStatus:
+		return nil
 
 	case .daemonStart:
-		print("running")
+		return "running"
 
 	case .daemonLogPath:
-		print(WBConfig.current().logPath)
+		return WBConfig.current().logPath
 
 	case .browserID:
-		print(try response.browser.unwrap("daemon did not return a browser id"))
+		return try response.browser.unwrap("daemon did not return a browser id")
 
 	case .browsers:
-		try printJSON(response.browsers ?? [])
+		return try compactJSONString(response.browsers ?? [])
 
 	case .pageSummary:
 		let page = try response.page.unwrap("daemon did not return page data")
-		try printJSON(PageSummaryOutput(
-			browser: response.browser,
-			message: response.message,
-			page: page
-		))
+		return try compactJSONString(
+			PageSummaryOutput(
+				browser: response.browser,
+				message: response.message,
+				page: page
+			))
 
 	case .page(let options):
 		let page = try response.page.unwrap("daemon did not return page data")
-		try printJSON(PageOutput(page: page, options: options))
+		return try compactJSONString(PageOutput(page: page, options: options))
 
 	case .interaction:
 		let page = try response.page.unwrap("daemon did not return page data")
-		try printJSON(PageSummaryOutput(
-			browser: response.browser,
-			message: response.message,
-			page: page
-		))
+		return try compactJSONString(
+			PageSummaryOutput(
+				browser: response.browser,
+				message: response.message,
+				page: page
+			))
 
 	case .value:
-		print(response.value ?? "")
+		return response.value ?? ""
 
 	case .message:
-		print(response.message ?? "ok")
+		return response.message ?? "ok"
 	}
 }
 

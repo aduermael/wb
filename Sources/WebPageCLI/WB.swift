@@ -3,9 +3,8 @@
 import Darwin
 import Foundation
 
-@main
-private struct WB {
-	static func main() {
+public enum WBMain {
+	public static func main() {
 		guard #available(macOS 26.0, *) else {
 			printError("wb requires macOS 26.0 or newer.")
 			Darwin.exit(1)
