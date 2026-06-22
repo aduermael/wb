@@ -152,7 +152,7 @@ Check formatting and repository-specific lint rules:
 ## Test
 
 ```bash
-swift test
+./test.sh
 ```
 
 The app target is macOS-only because it uses AppKit and WebKit, so the full test
