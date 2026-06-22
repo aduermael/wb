@@ -18,13 +18,33 @@ It gives scripts and coding agents a real persistent browser session without a b
 
 ## Install
 
-With Homebrew:
+For agent workflows, install the skill folder in the current project:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/aduermael/wb/main/install-skill.sh | sh
+```
+
+The project installer copies the `wb` skill into `.agents/skills/wb`, `.claude/skills/wb`, and `.grok/skills/wb` by default. The skill includes a bundled `install.sh` support script that makes the `wb` command available if an agent tries to use the skill before the CLI is installed.
+
+To install only one agent target:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/aduermael/wb/main/install-skill.sh | env WB_SKILL_TARGETS=codex sh
+```
+
+To install the CLI immediately while installing the skill:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/aduermael/wb/main/install-skill.sh | env WB_INSTALL_CLI=1 sh
+```
+
+To install only the CLI, use Homebrew:
 
 ```bash
 brew install aduermael/tap/wb
 ```
 
-Or with the standalone installer:
+Or use the standalone installer:
 
 Prebuilt releases are macOS 26+ binaries. Installing them does not require Xcode or a Swift toolchain.
 
@@ -121,7 +141,9 @@ The linter is a Swift executable target and runs on both macOS and Linux.
 
 ## Agent Skill
 
-This repo includes a standalone agent skill at [SKILL.md](SKILL.md). It is written as portable skill markdown for both Codex and Claude, but is not installed in a dedicated skill folder. To install it in either environment, copy or symlink that file as the skill's `SKILL.md`.
+This repo includes a standalone agent skill folder at [skill](skill). It contains the skill instructions plus an `install.sh` support script that installs `wb` through Homebrew when available, or through the standalone installer otherwise.
+
+In this checkout, `.agents/skills/wb`, `.claude/skills/wb`, and `.grok/skills/wb` are symlinks to `skill/`, so each agent sees both files. In another project, use `install-skill.sh` from the install section to copy the folder into the local agent skill directories.
 
 ## Output
 

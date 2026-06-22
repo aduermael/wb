@@ -1,15 +1,13 @@
 ---
 name: wb-browser
-description: Use the wb CLI to browse web pages, inspect compact page JSON, click/fill/submit actions, use viewport coordinates, scroll, take screenshots, and extract structured data efficiently without loading full pages.
+description: Use the installed wb CLI to browse web pages, inspect compact page JSON, click/fill/submit actions, use viewport coordinates, scroll, take screenshots, and extract structured data efficiently without loading full pages.
 ---
 
 # wb Browser Automation
 
-Use this skill when a task requires browsing or interacting with web content through the local `wb` CLI.
-
 ## Operating Model
 
-- Prefer `wb` when it is on `PATH`; use `./wb` only when the repo provides a local binary and `wb` is unavailable.
+- Use the installed `wb` command directly.
 - Browsers persist between commands. Reuse the returned browser ID until the task is done, then close it when appropriate.
 - Start with compact commands. `wb <url>` and interaction commands return summaries with `browser`, `title`, `url`, `progress`, `actions`, `images`, `htmlBytes`, and `jsonBytes`.
 - Use `wb page <id>` only when you need visible text, action details, or image URLs.
@@ -31,6 +29,12 @@ If a browser is already available:
 wb list
 wb "$id" https://example.com
 ```
+
+## Live Preview And Credential Handoff
+
+Use `wb show "$id"` when the user asks to watch progress, when visual confirmation helps, or when credentials, MFA, CAPTCHA, passkeys, or SSO block automation. The user can complete the step in the native browser window; do not ask them to paste secrets into chat.
+
+After the user completes the handoff, continue with the same browser ID and refresh state with `wb page "$id"` before acting again. Use `wb hide "$id"` when the visible window is no longer useful; hiding does not close the browser or clear session state.
 
 ## Commands
 
@@ -165,7 +169,7 @@ wb drag "$id" 700 500
 wb release "$id" 700 500
 ```
 
-Use screenshots when visual layout matters, when a canvas/custom control is not represented in `actions`, or when scrolling/clicking by coordinates is more reliable than DOM actions. Use `wb show "$id"` only when a visible native window helps observe behavior.
+Use screenshots when visual layout matters, when a canvas/custom control is not represented in `actions`, or when scrolling/clicking by coordinates is more reliable than DOM actions.
 
 ## Interaction Guidance
 
@@ -174,3 +178,7 @@ Use screenshots when visual layout matters, when a canvas/custom control is not 
 - Use coordinate clicks for canvas, maps, drag handles, or controls missing from `.actions`.
 - Use scroll before extracting more content from infinite-scroll pages; then refresh `wb page`.
 - If a command returns JSON with `ok:false`, read `error`, `browser`, and any included page summary before retrying.
+
+## Install Fallback
+
+Assume `wb` is installed. If the command is unavailable, run the bundled `install.sh` support script next to this `SKILL.md`; it uses Homebrew when available and otherwise uses the standalone release installer. Continue after `wb` runs normally.
