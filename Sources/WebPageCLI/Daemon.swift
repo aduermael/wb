@@ -25,9 +25,9 @@ final class DaemonProcess {
         )
         daemonLog("daemon disabled automatic and sudden termination")
 
-        let manager: BrowserManager = await MainActor.run {
+        let manager: BrowserManager = try await MainActor.run {
             BrowserApplicationHost.prepareForDaemon()
-            return BrowserManager(config: config)
+            return try BrowserManager(config: config)
         }
         await MainActor.run {
             BrowserApplicationHost.setQuitHandler {
@@ -124,10 +124,12 @@ final class DaemonClient {
         WBConfig.current().socketPath
     }
 
+    private let config: WBConfig
     private let socketPath: String
     private let idleTimeout: TimeInterval?
 
     init(socketPath: String = DaemonClient.defaultSocketPath, idleTimeout: TimeInterval? = nil) {
+        config = WBConfig.current(idleTimeout: idleTimeout)
         self.socketPath = socketPath
         self.idleTimeout = idleTimeout
     }
@@ -153,7 +155,9 @@ final class DaemonClient {
         guard let response = try? sendWithoutStarting(WireRequest(command: .ping)) else {
             return false
         }
-        return response.ok && response.protocolVersion == WireProtocol.version
+        return response.ok
+            && response.protocolVersion == WireProtocol.version
+            && ((try? isCompatibleEnvironment(response.environment)) == true)
     }
 
     private func sendWithoutStarting(_ request: WireRequest) throws -> WireResponse {
@@ -189,6 +193,13 @@ final class DaemonClient {
         }
 
         if response.ok && response.protocolVersion == WireProtocol.version {
+            if try isCompatibleEnvironment(response.environment) {
+                return
+            }
+
+            daemonLog("daemon environment mismatch; replacing daemon socket=\(socketPath)")
+            try stopIncompatibleDaemon()
+            try startDaemon()
             return
         }
 
@@ -198,6 +209,20 @@ final class DaemonClient {
         )
         try stopIncompatibleDaemon()
         try startDaemon()
+    }
+
+    private func isCompatibleEnvironment(_ daemonEnvironment: WBEnvironmentMetadata?) throws -> Bool {
+        guard let daemonEnvironment else {
+            return false
+        }
+
+        let expectedEnvironment = try WBEnvironment.loadOrCreate(in: config.directory).metadata
+        return normalizedDirectoryPath(daemonEnvironment.directory) == normalizedDirectoryPath(expectedEnvironment.directory)
+            && daemonEnvironment.uuid.lowercased() == expectedEnvironment.uuid.lowercased()
+    }
+
+    private func normalizedDirectoryPath(_ path: String) -> String {
+        URL(fileURLWithPath: path, isDirectory: true).standardizedFileURL.path
     }
 
     private func stopIncompatibleDaemon() throws {
@@ -332,7 +357,6 @@ final class DaemonClient {
             throw WBError.message("cannot locate current executable")
         }
 
-        let config = WBConfig.current(idleTimeout: idleTimeout)
         daemonLog(
             "starting daemon executable=\(executableURL.path) socket=\(socketPath) " +
             "sessions=\(config.sessionsDirectory.path) idleTimeout=\(config.idleTimeout) log=\(config.logPath)"
@@ -341,7 +365,9 @@ final class DaemonClient {
         process.executableURL = executableURL
         process.arguments = ["__daemon"]
         var environment = ProcessInfo.processInfo.environment
+        environment["WB_DIR"] = config.directory.path
         environment["WB_LOG"] = config.logPath
+        environment["WB_SOCKET"] = socketPath
         if let idleTimeout {
             environment["WB_IDLE_SECONDS"] = String(idleTimeout)
         }
@@ -366,7 +392,9 @@ final class DaemonClient {
         while Date() < deadline {
             do {
                 let response = try sendWithoutStarting(WireRequest(command: .ping))
-                if response.ok && response.protocolVersion == WireProtocol.version {
+                if response.ok,
+                   response.protocolVersion == WireProtocol.version,
+                   try isCompatibleEnvironment(response.environment) {
                     daemonLog("daemon ready pid=\(process.processIdentifier)")
                     return
                 }

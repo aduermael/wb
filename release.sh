@@ -1,6 +1,9 @@
 #!/usr/bin/env sh
 set -eu
 
+script_dir=$(CDPATH= cd "$(dirname "$0")" && pwd)
+. "$script_dir/scripts/codesign-wb.sh"
+
 usage() {
   echo "Usage: ./release.sh <version> [--build-only|--publish-only] [--repo owner/name] [--tap-repo owner/name|--no-tap] [arm64|x86_64 ...]" >&2
   echo "Examples:" >&2
@@ -9,6 +12,10 @@ usage() {
   echo "  ./release.sh 0.1.0 --publish-only" >&2
   echo "  ./release.sh 0.1.0 --build-only arm64" >&2
   echo "  ./release.sh 0.1.0 --publish-only --no-tap" >&2
+  echo "" >&2
+  echo "Signing environment:" >&2
+  echo "  WB_CODESIGN_IDENTITY  Signing identity. Defaults to '-' for ad-hoc signing." >&2
+  echo "  WB_CODESIGN=off       Skip binary signing." >&2
 }
 
 die() {
@@ -161,6 +168,7 @@ build_release() {
     mkdir -p "$asset_dir"
     cp "$bin" "$asset_dir/wb"
     strip "$asset_dir/wb" 2>/dev/null || true
+    wb_sign_binary "$asset_dir/wb"
 
     archive_name="wb-macos-$arch.tar.gz"
     archive="$dist/$archive_name"

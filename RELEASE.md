@@ -28,6 +28,12 @@ Use this only on a Mac that also has `gh` authenticated:
 
 The script builds `arm64` and `x86_64` release binaries, packages tarballs, writes SHA-256 checksums, pushes `main`, creates/pushes an annotated tag like `v0.1.0`, and creates or updates the GitHub Release.
 
+Release binaries are signed before packaging. By default, signing uses ad-hoc codesigning (`codesign -s -`), so an Apple Developer ID certificate is not required. Set `WB_CODESIGN_IDENTITY` to use another local signing identity, or set `WB_CODESIGN=off` to skip signing.
+
+Migration note: old sessions created in a cwd-local `wb/` directory or a non-root `.wb` directory are not moved automatically. Use `WB_DIR` to point at the old directory when needed, or manually migrate its contents into the new git-root `.wb`.
+
+Do not ship or track `.wb/environment.json` in sample projects. That file is public metadata, but it intentionally defines the WebKit website data profile for a local environment.
+
 It also updates the Homebrew formula in `aduermael/homebrew-tap` when both macOS release assets are present. To publish without touching the tap:
 
 ```bash

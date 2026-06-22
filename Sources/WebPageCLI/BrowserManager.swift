@@ -8,11 +8,19 @@ import WebKit
 @available(macOS 26.0, *)
 @MainActor
 final class BrowserManager: @unchecked Sendable {
+    private let environment: WBEnvironment
     private let sessionStore: SessionStore
+    private let websiteDataStore: WKWebsiteDataStore
     private var browsers: [String: BrowserInstance] = [:]
 
-    init(config: WBConfig = .current()) {
+    init(config: WBConfig = .current()) throws {
+        environment = try WBEnvironment.loadOrCreate(in: config.directory)
         sessionStore = SessionStore(directory: config.sessionsDirectory)
+        websiteDataStore = WKWebsiteDataStore(forIdentifier: environment.uuid)
+        daemonLog(
+            "environment loaded directory=\(environment.directory.path) " +
+            "uuid=\(environment.uuid.uuidString.lowercased())"
+        )
     }
 
     func handleWireData(_ data: Data) async -> Data {
@@ -31,7 +39,7 @@ final class BrowserManager: @unchecked Sendable {
     private func handle(_ request: WireRequest) async throws -> WireResponse {
         switch request.command {
         case .ping:
-            return .success(message: "ok")
+            return .success(environment: environment.metadata, message: "ok")
 
         case .browserCreate:
             let browser = createBrowser()
@@ -187,7 +195,12 @@ final class BrowserManager: @unchecked Sendable {
     private func createBrowser(id requestedID: String? = nil, createdAt: Date = Date(), updatedAt: Date = Date()) -> BrowserInstance {
         let id = requestedID ?? nextBrowserID()
 
-        let browser = BrowserInstance(id: id, createdAt: createdAt, updatedAt: updatedAt)
+        let browser = BrowserInstance(
+            id: id,
+            websiteDataStore: websiteDataStore,
+            createdAt: createdAt,
+            updatedAt: updatedAt
+        )
         browsers[id] = browser
         daemonLog("browser instance registered id=\(id)")
         return browser
@@ -363,14 +376,22 @@ final class BrowserManager: @unchecked Sendable {
 private final class BrowserInstance {
     let id: String
 
-    private let page = WebPage()
+    private let page: WebPage
     private var actions: [BrowserAction] = []
     private var windowController: BrowserWindowController?
     private let createdAt: Date
     private var updatedAt: Date
 
-    init(id: String, createdAt: Date = Date(), updatedAt: Date = Date()) {
+    init(
+        id: String,
+        websiteDataStore: WKWebsiteDataStore,
+        createdAt: Date = Date(),
+        updatedAt: Date = Date()
+    ) {
         self.id = id
+        var configuration = WebPage.Configuration()
+        configuration.websiteDataStore = websiteDataStore
+        self.page = WebPage(configuration: configuration)
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
@@ -553,29 +574,29 @@ private final class BrowserInstance {
     }
 
     func dump() async -> BrowserDump {
-        daemonLog("browser dump snapshot start id=\(id) url=\(page.url?.absoluteString ?? "-")")
-        let currentSnapshot: PageSnapshot?
+        daemonLog("browser dump metadata start id=\(id) url=\(page.url?.absoluteString ?? "-")")
+        let actionCount: Int
         if page.url == nil {
-            currentSnapshot = nil
+            actionCount = actions.count
         } else {
-            currentSnapshot = try? await snapshot()
+            let refreshedActions = try? await refreshActions()
+            actionCount = refreshedActions?.count ?? actions.count
         }
-        let snapshotURL = currentSnapshot.flatMap { $0.url }
 
         let dump = BrowserDump(
             schemaVersion: 1,
             browser: id,
-            title: (currentSnapshot?.title ?? page.title).nilIfEmpty,
-            url: snapshotURL ?? page.url?.absoluteString,
-            loading: currentSnapshot?.loading ?? page.isLoading,
-            progress: currentSnapshot?.progress ?? page.estimatedProgress,
-            actions: currentSnapshot?.actions.count ?? actions.count,
+            title: page.title.nilIfEmpty,
+            url: page.url?.absoluteString,
+            loading: page.isLoading,
+            progress: page.estimatedProgress,
+            actions: actionCount,
             createdAt: createdAt.iso8601String,
             updatedAt: updatedAt.iso8601String,
             dumpedAt: Date().iso8601String,
-            snapshot: currentSnapshot
+            snapshot: nil
         )
-        daemonLog("browser dump snapshot complete id=\(id) url=\(dump.url ?? "-") snapshot=\(currentSnapshot != nil)")
+        daemonLog("browser dump metadata complete id=\(id) url=\(dump.url ?? "-") actions=\(actionCount)")
         return dump
     }
 

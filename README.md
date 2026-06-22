@@ -101,6 +101,14 @@ For a local debug binary at `./wb`:
 ./wb create
 ```
 
+`build.sh` signs the final `./wb` binary by default using ad-hoc codesigning, so no Apple Developer ID is required. To use a specific local signing identity:
+
+```bash
+WB_CODESIGN_IDENTITY="wb local code signing" ./build.sh
+```
+
+Set `WB_CODESIGN=off` to skip signing for local debugging.
+
 ## Agent Skill
 
 This repo includes a standalone agent skill at [SKILL.md](SKILL.md). It is written as portable skill markdown for both Codex and Claude, but is not installed in a dedicated skill folder. To install it in either environment, copy or symlink that file as the skill's `SKILL.md`.
@@ -120,6 +128,7 @@ Use `wb page --help` to see filterable fields. Use `wb page <id> --fields title,
 ## Commands
 
 - `wb create`: create an empty browser and print its ID.
+- `wb env`: print public metadata for the current `.wb` environment.
 - `wb <url>`: create a browser, load the page, and print a compact summary.
 - `wb <id> <url>`: load a page in an existing browser.
 - `wb list`: print active and dumped browser summaries as compact JSON.
@@ -148,11 +157,17 @@ Browser IDs can be used across commands. If a saved browser is not currently act
 
 Browsers persist between commands and are autosaved after creation, navigation, interactions, and JavaScript evaluation. Use `wb list` to find browser IDs, `wb page <id>` to inspect the current page, and `wb close <id>` when you are done.
 
+Environment state is resolved in this order: `WB_DIR`, then `.wb` in the nearest parent git root, then `.wb` under the current directory. The `.wb/environment.json` file stores a stable environment UUID and the public sessions directory name. WebKit cookies, local storage, cache, and related website data are isolated per environment through that UUID with `WKWebsiteDataStore(forIdentifier:)`.
+
+Treat `.wb/environment.json` as a local trust boundary. Copying or committing it intentionally reuses the same WebKit website data profile for that macOS user, so do not accept a tracked `.wb` directory from repositories you do not trust.
+
+Migration note: older sessions created in a cwd-local `wb/` directory or a non-root `.wb` directory are not moved automatically. Set `WB_DIR` to that old directory when you need those sessions, or manually migrate the old contents into the new git-root `.wb`.
+
 The `page` command refreshes the action list for the current document. If the page navigates or rerenders, run `wb page <id>` again before using action numbers from older output.
 
 Coordinate commands use top-left origin coordinates in the current web content viewport and do not open a window. `screenshot` captures that same viewport, so agents can inspect the image and use matching coordinates for `click`, `press`, `drag`, `release`, and `scroll`. If the browser is already visible through `wb show`, the same page updates are visible there.
 
-By default, browser sessions are stored in `.wb/sessions` under the current directory. Existing `wb/sessions` directories are still used for compatibility. Set `WB_DIR` to override the state directory.
+Browser dumps in `.wb/sessions` store resumable browser metadata, not full page text, image lists, or action details. Use `wb page <id>` for live page inspection when needed.
 
 The `show` command attaches a native window to the same browser used by headless commands. While a browser window is visible, the daemon does not idle-exit. Use `wb hide <id>` or close the window to allow normal idle shutdown again.
 

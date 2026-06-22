@@ -51,6 +51,11 @@ private struct WB {
             print(WBConfig.current().logPath)
 
         default:
+            if let localCommand = invocation.localCommand {
+                try runLocalCommand(localCommand)
+                return
+            }
+
             let request = try invocation.request.unwrap("missing daemon request")
             let client = DaemonClient(idleTimeout: invocation.daemonIdleTimeout)
             let response: WireResponse

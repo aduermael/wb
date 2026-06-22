@@ -51,14 +51,25 @@ struct WBConfig: Sendable {
     }
 
     private static func defaultDirectory(baseURL: URL) -> URL {
-        let legacyURL = baseURL.appendingPathComponent("wb", isDirectory: true)
-        var isDirectory = ObjCBool(false)
-        if FileManager.default.fileExists(atPath: legacyURL.path, isDirectory: &isDirectory),
-           isDirectory.boolValue {
-            return legacyURL
-        }
+        let rootURL = gitRoot(startingAt: baseURL) ?? baseURL
+        return rootURL.appendingPathComponent(".wb", isDirectory: true)
+    }
 
-        return baseURL.appendingPathComponent(".wb", isDirectory: true)
+    private static func gitRoot(startingAt baseURL: URL) -> URL? {
+        let fileManager = FileManager.default
+        var current = baseURL.standardizedFileURL
+
+        while true {
+            if fileManager.fileExists(atPath: current.appendingPathComponent(".git").path) {
+                return current
+            }
+
+            let parent = current.deletingLastPathComponent()
+            if parent.path == current.path {
+                return nil
+            }
+            current = parent
+        }
     }
 
     static func parseIdleTimeout(_ rawValue: String?) -> TimeInterval? {
@@ -84,6 +95,141 @@ struct WBConfig: Sendable {
         }
         return String(hash, radix: 16)
     }
+}
+
+struct WBEnvironment: Sendable {
+    let directory: URL
+    let uuid: UUID
+
+    var metadata: WBEnvironmentMetadata {
+        WBEnvironmentMetadata(
+            directory: directory.path,
+            sessionsDirectory: "sessions",
+            uuid: uuid.uuidString.lowercased()
+        )
+    }
+
+    static func loadOrCreate(in directory: URL) throws -> WBEnvironment {
+        let fileURL = directory.appendingPathComponent("environment.json")
+        let fileManager = FileManager.default
+
+        if fileManager.fileExists(atPath: fileURL.path) {
+            return try load(from: fileURL, directory: directory)
+        }
+
+        do {
+            try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        } catch {
+            throw WBError.message(
+                "failed to create environment directory \(directory.path): \(error.localizedDescription)"
+            )
+        }
+
+        let environment = WBEnvironment(directory: directory, uuid: UUID())
+        let file = WBEnvironmentFile(
+            schemaVersion: 1,
+            sessionsDirectory: "sessions",
+            uuid: environment.uuid.uuidString.lowercased(),
+            createdAt: Date().iso8601String
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        let data = try encoder.encode(file)
+
+        if try createFileExclusively(at: fileURL, data: data) {
+            return environment
+        }
+
+        return try load(from: fileURL, directory: directory)
+    }
+
+    private static func createFileExclusively(at fileURL: URL, data: Data) throws -> Bool {
+        let flags = O_WRONLY | O_CREAT | O_EXCL
+        let mode = mode_t(S_IRUSR | S_IWUSR)
+        var fd = Darwin.open(fileURL.path, flags, mode)
+        guard fd >= 0 else {
+            if errno == EEXIST {
+                return false
+            }
+            throw WBError.posix("open \(fileURL.path)")
+        }
+
+        var completed = false
+        defer {
+            if !completed {
+                if fd >= 0 {
+                    Darwin.close(fd)
+                }
+                Darwin.unlink(fileURL.path)
+            }
+        }
+
+        try data.withUnsafeBytes { rawBuffer in
+            guard let baseAddress = rawBuffer.baseAddress else {
+                return
+            }
+
+            var writtenBytes = 0
+            while writtenBytes < rawBuffer.count {
+                let written = Darwin.write(
+                    fd,
+                    baseAddress.advanced(by: writtenBytes),
+                    rawBuffer.count - writtenBytes
+                )
+
+                if written < 0 {
+                    if errno == EINTR {
+                        continue
+                    }
+                    throw WBError.posix("write \(fileURL.path)")
+                }
+                if written == 0 {
+                    throw WBError.message("write \(fileURL.path): wrote zero bytes")
+                }
+
+                writtenBytes += written
+            }
+        }
+
+        let closeResult = Darwin.close(fd)
+        fd = -1
+        guard closeResult == 0 else {
+            throw WBError.posix("close \(fileURL.path)")
+        }
+
+        completed = true
+        return true
+    }
+
+    private static func load(from fileURL: URL, directory: URL) throws -> WBEnvironment {
+        do {
+            let data = try Data(contentsOf: fileURL)
+            let file = try JSONDecoder().decode(WBEnvironmentFile.self, from: data)
+            guard let uuid = UUID(uuidString: file.uuid) else {
+                throw WBError.message("invalid environment UUID in \(fileURL.path)")
+            }
+            return WBEnvironment(directory: directory, uuid: uuid)
+        } catch let error as WBError {
+            throw error
+        } catch {
+            throw WBError.message(
+                "failed to load environment UUID from \(fileURL.path): \(error.localizedDescription)"
+            )
+        }
+    }
+}
+
+struct WBEnvironmentMetadata: Codable, Sendable {
+    let directory: String
+    let sessionsDirectory: String
+    let uuid: String
+}
+
+private struct WBEnvironmentFile: Codable {
+    let schemaVersion: Int
+    let sessionsDirectory: String?
+    let uuid: String
+    let createdAt: String?
 }
 
 struct SessionStore: Sendable {

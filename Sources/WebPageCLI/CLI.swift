@@ -2,21 +2,28 @@ import Foundation
 
 struct CLIInvocation {
     let request: WireRequest?
+    let localCommand: LocalCommand?
     let renderMode: RenderMode
     let startDaemon: Bool
     let daemonIdleTimeout: TimeInterval?
 
     init(
         request: WireRequest?,
+        localCommand: LocalCommand? = nil,
         renderMode: RenderMode,
         startDaemon: Bool,
         daemonIdleTimeout: TimeInterval? = nil
     ) {
         self.request = request
+        self.localCommand = localCommand
         self.renderMode = renderMode
         self.startDaemon = startDaemon
         self.daemonIdleTimeout = daemonIdleTimeout
     }
+}
+
+enum LocalCommand {
+    case environment
 }
 
 enum RenderMode {
@@ -37,6 +44,7 @@ enum RenderMode {
 
 enum HelpTopic {
     case root
+    case environment
     case create
     case list
     case close
@@ -87,6 +95,20 @@ struct CLIParser {
         switch command {
         case "help":
             return try parseHelpCommand(arguments)
+
+        case "env", "environment":
+            if arguments.containsHelpFlag {
+                return help(.environment)
+            }
+            guard arguments.isEmpty else {
+                throw WBError.message("unexpected env argument \(arguments[0])")
+            }
+            return CLIInvocation(
+                request: nil,
+                localCommand: .environment,
+                renderMode: .silent,
+                startDaemon: false
+            )
 
         case "create":
             if arguments.containsHelpFlag {
@@ -437,6 +459,8 @@ struct CLIParser {
         }
 
         switch command {
+        case "env", "environment":
+            return help(.environment)
         case "create":
             return help(.create)
         case "list", "ls":
@@ -686,12 +710,23 @@ func render(_ response: WireResponse, mode: RenderMode) throws {
     }
 }
 
+func runLocalCommand(_ command: LocalCommand) throws {
+    let config = WBConfig.current()
+    let environment = try WBEnvironment.loadOrCreate(in: config.directory)
+
+    switch command {
+    case .environment:
+        try printJSON(environment.metadata)
+    }
+}
+
 func printHelp(_ topic: HelpTopic) {
     switch topic {
     case .root:
         print("""
         Usage:
           wb [<id>] <url>
+          wb env
           wb create
           wb list
           wb close <id>
@@ -718,9 +753,22 @@ func printHelp(_ topic: HelpTopic) {
 
         Notes:
           - Browsers persist between commands; use wb list to see saved IDs.
+          - Environment state is stored in .wb next to the nearest .git directory.
           - Dumped browser IDs resume automatically when used.
           - JSON output is compact and omits empty, null, and most false fields.
           - Run 'wb <command> --help' for command details.
+        """)
+
+    case .environment:
+        print("""
+        Usage:
+          wb env
+
+        Prints public metadata for the current wb environment.
+
+        By default, wb uses .wb next to the nearest parent .git directory.
+        Outside a git checkout, it uses .wb under the current directory.
+        Set WB_DIR to override the environment directory.
         """)
 
     case .create:

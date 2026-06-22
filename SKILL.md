@@ -35,6 +35,7 @@ wb "$id" https://example.com
 ## Commands
 
 - `wb create`: create an empty browser and print its ID.
+- `wb env`: print public metadata for the current `.wb` environment.
 - `wb <url>`: create a browser, load the page, and print a compact summary.
 - `wb <id> <url>`: load a page in an existing browser.
 - `wb list`: list active and dumped browsers as compact JSON.

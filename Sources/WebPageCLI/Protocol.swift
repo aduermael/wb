@@ -1,7 +1,7 @@
 import Foundation
 
 enum WireProtocol {
-    static let version = 26
+    static let version = 28
 }
 
 enum WireCommand: String, Codable, Equatable, Sendable {
@@ -132,6 +132,7 @@ struct WireResponse: Codable, Sendable {
     var ok: Bool
     var browser: String?
     var browsers: [BrowserSummary]?
+    var environment: WBEnvironmentMetadata?
     var page: PageSnapshot?
     var value: String?
     var message: String?
@@ -141,6 +142,7 @@ struct WireResponse: Codable, Sendable {
     static func success(
         browser: String? = nil,
         browsers: [BrowserSummary]? = nil,
+        environment: WBEnvironmentMetadata? = nil,
         page: PageSnapshot? = nil,
         value: String? = nil,
         message: String? = nil,
@@ -151,6 +153,7 @@ struct WireResponse: Codable, Sendable {
             ok: true,
             browser: browser,
             browsers: browsers,
+            environment: environment,
             page: page,
             value: value,
             message: message,
@@ -162,6 +165,7 @@ struct WireResponse: Codable, Sendable {
     static func failure(
         _ message: String,
         browser: String? = nil,
+        environment: WBEnvironmentMetadata? = nil,
         page: PageSnapshot? = nil,
         url: String? = nil
     ) -> WireResponse {
@@ -170,6 +174,7 @@ struct WireResponse: Codable, Sendable {
             ok: false,
             browser: browser,
             browsers: nil,
+            environment: environment,
             page: page,
             value: nil,
             message: nil,
