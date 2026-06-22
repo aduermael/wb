@@ -1,0 +1,21 @@
+name: Lint
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  macos:
+    name: Swift lint (macOS)
+    runs-on: macos-26
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+
+      - name: Run linter
+        run: ./lint.sh
+
+      - name: Build app
+        run: swift build

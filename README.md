@@ -1,5 +1,7 @@
 # wb
 
+[![Lint](https://github.com/aduermael/wb/actions/workflows/lint.yml/badge.svg)](https://github.com/aduermael/wb/actions/workflows/lint.yml)
+
 `wb` is a macOS 26+ web browser for agents, exposed as a lightweight command-line tool.
 
 It gives scripts and coding agents a real persistent browser session without a bundled Chromium, driver server, or heavyweight app wrapper. The release binary is less than 2 MB, starts from a normal shell command, speaks compact JSON, and can still show a live native preview window when you need to see what the agent sees.
@@ -108,6 +110,14 @@ WB_CODESIGN_IDENTITY="wb local code signing" ./build.sh
 ```
 
 Set `WB_CODESIGN=off` to skip signing for local debugging.
+
+## Lint
+
+```bash
+./lint.sh
+```
+
+The linter is a Swift executable target and runs on both macOS and Linux.
 
 ## Agent Skill
 
