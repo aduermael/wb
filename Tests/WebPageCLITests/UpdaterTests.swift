@@ -128,4 +128,80 @@ struct UpdaterTests {
 			XCTAssertEqual(detectedBrewPath, brewPath.path)
 		}
 	}
+
+	func testInstallationDetectorIdentifiesNPMExecutable() throws {
+		try withTemporaryDirectory { directory in
+			let binDirectory = directory.appendingPathComponent("bin", isDirectory: true)
+			try FileManager.default.createDirectory(at: binDirectory, withIntermediateDirectories: true)
+
+			let npmPath = binDirectory.appendingPathComponent("npm")
+			try Data("#!/bin/sh\n".utf8).write(to: npmPath)
+			try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: npmPath.path)
+
+			let packageDirectory =
+				directory
+				.appendingPathComponent("lib", isDirectory: true)
+				.appendingPathComponent("node_modules", isDirectory: true)
+				.appendingPathComponent("@aduermael_", isDirectory: true)
+				.appendingPathComponent("wb", isDirectory: true)
+			let executable =
+				packageDirectory
+				.appendingPathComponent("npm", isDirectory: true)
+				.appendingPathComponent("bin", isDirectory: true)
+				.appendingPathComponent("wb")
+
+			try FileManager.default.createDirectory(
+				at: executable.deletingLastPathComponent(),
+				withIntermediateDirectories: true
+			)
+			try Data("{\"name\":\"@aduermael_/wb\"}\n".utf8).write(
+				to: packageDirectory.appendingPathComponent("package.json")
+			)
+			try Data().write(to: executable)
+			try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executable.path)
+
+			let method = InstallationDetector.detect(
+				executablePath: executable.path,
+				environment: ["PATH": binDirectory.path],
+				runCommand: { _, _ in
+					CommandResult(status: 1, output: "", errorOutput: "unexpected command")
+				}
+			)
+
+			guard case .npm(let detectedNPMPath, let packageName) = method else {
+				return XCTFail("expected npm install method")
+			}
+			XCTAssertEqual(detectedNPMPath, npmPath.path)
+			XCTAssertEqual(packageName, "@aduermael_/wb")
+			XCTAssertEqual(
+				InstallationDetector.npmPackageDirectory(containing: executable.path)?.path,
+				packageDirectory.path
+			)
+		}
+	}
+
+	func testInstallationDetectorAllowsNPMOverride() throws {
+		try withTemporaryDirectory { directory in
+			let binDirectory = directory.appendingPathComponent("bin", isDirectory: true)
+			try FileManager.default.createDirectory(at: binDirectory, withIntermediateDirectories: true)
+
+			let npmPath = binDirectory.appendingPathComponent("npm")
+			try Data("#!/bin/sh\n".utf8).write(to: npmPath)
+			try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: npmPath.path)
+
+			let method = InstallationDetector.detect(
+				executablePath: directory.appendingPathComponent("wb").path,
+				environment: [
+					"PATH": binDirectory.path,
+					"WB_UPDATE_INSTALLER": "npm",
+				]
+			)
+
+			guard case .npm(let detectedNPMPath, let packageName) = method else {
+				return XCTFail("expected npm install method")
+			}
+			XCTAssertEqual(detectedNPMPath, npmPath.path)
+			XCTAssertEqual(packageName, "@aduermael_/wb")
+		}
+	}
 }

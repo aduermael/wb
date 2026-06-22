@@ -186,4 +186,4 @@ Use screenshots when visual layout matters, when a canvas/custom control is not 
 
 ## Install Fallback
 
-Assume `wb` is installed. If the command is unavailable, run the bundled `install.sh` support script next to this `SKILL.md`; it uses Homebrew when available and otherwise uses the standalone release installer. Continue after `wb` runs normally.
+Assume `wb` is installed. If the command is unavailable, run the bundled `install.sh` support script next to this `SKILL.md`; it tries Homebrew first, then npm, then the standalone release installer. Continue after `wb` runs normally.

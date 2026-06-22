@@ -59,9 +59,18 @@ struct UpdateCheckResult: Equatable {
 	}
 }
 
+enum WBInstallConstants {
+	static let npmPackageName = "@aduermael_/wb"
+}
+
 enum InstallMethod: Equatable {
 	case homebrew(brewPath: String)
+	case npm(npmPath: String, packageName: String)
 	case direct
+}
+
+private struct NPMPackageManifest: Decodable {
+	let name: String?
 }
 
 struct CommandResult {
@@ -86,6 +95,10 @@ enum InstallationDetector {
 				if let brewPath = findExecutable(named: "brew", environment: environment) {
 					return .homebrew(brewPath: brewPath)
 				}
+			case "node", "npm":
+				if let npmPath = findExecutable(named: "npm", environment: environment) {
+					return .npm(npmPath: npmPath, packageName: WBInstallConstants.npmPackageName)
+				}
 			case "direct", "standalone":
 				return .direct
 			default:
@@ -93,27 +106,42 @@ enum InstallationDetector {
 			}
 		}
 
-		guard let brewPath = findExecutable(named: "brew", environment: environment) else {
-			return .direct
-		}
-		guard
-			let formulaPrefix = try? runCommand(brewPath, ["--prefix", "wb"]).output
-				.trimmingCharacters(in: .whitespacesAndNewlines),
-			!formulaPrefix.isEmpty
-		else {
-			return .direct
+		if let brewPath = findExecutable(named: "brew", environment: environment),
+			isHomebrewExecutable(executablePath: executablePath, brewPath: brewPath, runCommand: runCommand)
+		{
+			return .homebrew(brewPath: brewPath)
 		}
 
-		let executableCandidates = canonicalCandidates(for: executablePath)
-		let formulaPrefixPath = canonicalPath(formulaPrefix)
-		let formulaBinCandidates = canonicalCandidates(for: "\(formulaPrefix)/bin/wb")
-		if !executableCandidates.isDisjoint(with: formulaBinCandidates) {
-			return .homebrew(brewPath: brewPath)
+		if let npmPath = findExecutable(named: "npm", environment: environment),
+			npmPackageDirectory(containing: executablePath) != nil
+		{
+			return .npm(npmPath: npmPath, packageName: WBInstallConstants.npmPackageName)
 		}
-		if executableCandidates.contains(where: { path in
-			path == formulaPrefixPath || path.hasPrefix("\(formulaPrefixPath)/")
-		}) {
-			return .homebrew(brewPath: brewPath)
+
+		return .direct
+	}
+
+	private static func isHomebrewExecutable(
+		executablePath: String,
+		brewPath: String,
+		runCommand: CommandRunner
+	) -> Bool {
+		let executableCandidates = canonicalCandidates(for: executablePath)
+
+		if let formulaPrefix = try? runCommand(brewPath, ["--prefix", "wb"]).output
+			.trimmingCharacters(in: .whitespacesAndNewlines),
+			!formulaPrefix.isEmpty
+		{
+			let formulaPrefixPath = canonicalPath(formulaPrefix)
+			let formulaBinCandidates = canonicalCandidates(for: "\(formulaPrefix)/bin/wb")
+			if !executableCandidates.isDisjoint(with: formulaBinCandidates) {
+				return true
+			}
+			if executableCandidates.contains(where: { path in
+				path == formulaPrefixPath || path.hasPrefix("\(formulaPrefixPath)/")
+			}) {
+				return true
+			}
 		}
 
 		if let brewPrefix = try? runCommand(brewPath, ["--prefix"]).output
@@ -122,11 +150,35 @@ enum InstallationDetector {
 		{
 			let linkedBinCandidates = canonicalCandidates(for: "\(brewPrefix)/bin/wb")
 			if !executableCandidates.isDisjoint(with: linkedBinCandidates) {
-				return .homebrew(brewPath: brewPath)
+				return true
 			}
 		}
 
-		return .direct
+		return false
+	}
+
+	static func npmPackageDirectory(
+		containing executablePath: String,
+		packageName: String = WBInstallConstants.npmPackageName
+	) -> URL? {
+		var directory = URL(fileURLWithPath: canonicalPath(executablePath))
+			.deletingLastPathComponent()
+
+		while true {
+			let manifestURL = directory.appendingPathComponent("package.json")
+			if let data = try? Data(contentsOf: manifestURL),
+				let manifest = try? JSONDecoder().decode(NPMPackageManifest.self, from: data),
+				manifest.name == packageName
+			{
+				return directory
+			}
+
+			let parent = directory.deletingLastPathComponent()
+			if parent.path == directory.path {
+				return nil
+			}
+			directory = parent
+		}
 	}
 
 	static func findExecutable(
@@ -277,6 +329,9 @@ enum WBUpdater {
 		case .homebrew(let brewPath):
 			try updateWithHomebrew(brewPath: brewPath)
 
+		case .npm(let npmPath, let packageName):
+			try updateWithNPM(npmPath: npmPath, packageName: packageName)
+
 		case .direct:
 			try await updateDirectInstall(
 				executablePath: executablePath,
@@ -324,6 +379,12 @@ enum WBUpdater {
 		try ProcessCommand.runStreaming(brewPath, ["update"])
 		try ProcessCommand.runStreaming(brewPath, ["upgrade", "wb"])
 		print("Homebrew update completed.")
+	}
+
+	private static func updateWithNPM(npmPath: String, packageName: String) throws {
+		print("Updating wb with npm...")
+		try ProcessCommand.runStreaming(npmPath, ["install", "-g", "\(packageName)@latest"])
+		print("npm update completed.")
 	}
 
 	private static func updateDirectInstall(executablePath: String, repository: String) async throws {

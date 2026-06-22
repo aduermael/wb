@@ -72,6 +72,7 @@ func printHelp(_ topic: HelpTopic) {
 			Updates wb to the latest GitHub release.
 
 			When wb is installed with Homebrew, this runs brew update and brew upgrade wb.
+			When wb is installed with npm, this runs npm install -g @aduermael_/wb@latest.
 			Standalone release binaries replace their current executable in place.
 			""")
 

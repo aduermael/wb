@@ -117,6 +117,12 @@ TestHarness.run("UpdaterTests.testGitHubReleaseDecodesAssets") {
 TestHarness.run("UpdaterTests.testInstallationDetectorIdentifiesHomebrewExecutable") {
 	try updaterTests.testInstallationDetectorIdentifiesHomebrewExecutable()
 }
+TestHarness.run("UpdaterTests.testInstallationDetectorIdentifiesNPMExecutable") {
+	try updaterTests.testInstallationDetectorIdentifiesNPMExecutable()
+}
+TestHarness.run("UpdaterTests.testInstallationDetectorAllowsNPMOverride") {
+	try updaterTests.testInstallationDetectorAllowsNPMOverride()
+}
 
 let sessionStoreTests = SessionStoreTests()
 TestHarness.run("SessionStoreTests.testIdleTimeoutParsing") {
