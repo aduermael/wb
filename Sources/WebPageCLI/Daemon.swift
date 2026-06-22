@@ -22,8 +22,8 @@ final class DaemonProcess {
 		let server = UnixSocketServer(socketPath: socketPath)
 		self.server = server
 		daemonLog(
-			"daemon starting socket=\(socketPath) sessions=\(config.sessionsDirectory.path) " +
-            "idleTimeout=\(config.idleTimeout) log=\(config.logPath)"
+			"daemon starting socket=\(socketPath) sessions=\(config.sessionsDirectory.path) "
+				+ "idleTimeout=\(config.idleTimeout) log=\(config.logPath)"
 		)
 		daemonLog("daemon disabled automatic and sudden termination")
 
@@ -68,7 +68,9 @@ final class DaemonProcess {
 
 			if activity.isIdle(timeout: config.idleTimeout) {
 				if !keptAliveBrowsers.isEmpty {
-					daemonLog("idle skipped windowBrowsers=\(keptAliveBrowsers.joined(separator: ","))")
+					daemonLog(
+						"idle skipped windowBrowsers=\(keptAliveBrowsers.joined(separator: ","))"
+					)
 					continue
 				}
 
@@ -83,7 +85,8 @@ final class DaemonProcess {
 
 				let keptAliveBrowsersAfterDump = await manager.browserIDsKeepingDaemonAlive()
 				if activity.isIdle(timeout: config.idleTimeout),
-					keptAliveBrowsersAfterDump.isEmpty {
+					keptAliveBrowsersAfterDump.isEmpty
+				{
 					daemonLog("daemon exiting after idle dump")
 					Darwin.exit(0)
 				}
@@ -92,7 +95,7 @@ final class DaemonProcess {
 	}
 }
 
-private final class DaemonActivity: @unchecked Sendable {
+final class DaemonActivity: @unchecked Sendable {
 	private let lock = NSLock()
 	private var inFlightRequests = 0
 	private var lastActivityAt = Date()
@@ -189,8 +192,8 @@ final class DaemonClient {
 			response = try sendWithoutStarting(WireRequest(command: .ping))
 		} catch {
 			daemonLog(
-				"daemon not reachable or unresponsive; replacing daemon " +
-                "socket=\(socketPath) error=\(error.localizedDescription)"
+				"daemon not reachable or unresponsive; replacing daemon "
+					+ "socket=\(socketPath) error=\(error.localizedDescription)"
 			)
 			try? stopIncompatibleDaemon()
 			try startDaemon()
@@ -209,8 +212,8 @@ final class DaemonClient {
 		}
 
 		daemonLog(
-			"daemon protocol mismatch current=\(String(describing: response.protocolVersion)) " +
-            "expected=\(WireProtocol.version); replacing"
+			"daemon protocol mismatch current=\(String(describing: response.protocolVersion)) "
+				+ "expected=\(WireProtocol.version); replacing"
 		)
 		try stopIncompatibleDaemon()
 		try startDaemon()
@@ -222,8 +225,8 @@ final class DaemonClient {
 		}
 
 		let expectedEnvironment = try WBEnvironment.loadOrCreate(in: config.directory).metadata
-		return normalizedDirectoryPath(daemonEnvironment.directory) ==
-			normalizedDirectoryPath(expectedEnvironment.directory)
+		return normalizedDirectoryPath(daemonEnvironment.directory)
+			== normalizedDirectoryPath(expectedEnvironment.directory)
 			&& daemonEnvironment.uuid.lowercased() == expectedEnvironment.uuid.lowercased()
 	}
 
@@ -240,7 +243,7 @@ final class DaemonClient {
 			return
 		}
 
-        // Treat lsof output as untrusted; never signal unrelated user processes.
+		// Treat lsof output as untrusted; never signal unrelated user processes.
 		let processIDs = processIDsUsingSocket().filter(isManagedDaemonProcess)
 		guard !processIDs.isEmpty else {
 			daemonLog("no managed daemon process found for stale socket; unlinking socket=\(socketPath)")
@@ -249,8 +252,8 @@ final class DaemonClient {
 		}
 
 		daemonLog(
-			"terminating incompatible daemon " +
-			"pids=\(processIDs.map(String.init).joined(separator: ",")) signal=TERM"
+			"terminating incompatible daemon "
+				+ "pids=\(processIDs.map(String.init).joined(separator: ",")) signal=TERM"
 		)
 		terminate(processIDs, signal: SIGTERM)
 		if waitForDaemonToStop(timeout: 2) {
@@ -258,7 +261,9 @@ final class DaemonClient {
 			return
 		}
 
-		daemonLog("killing incompatible daemon pids=\(processIDs.map(String.init).joined(separator: ",")) signal=KILL")
+		daemonLog(
+			"killing incompatible daemon pids=\(processIDs.map(String.init).joined(separator: ",")) signal=KILL"
+		)
 		terminate(processIDs, signal: SIGKILL)
 		if waitForDaemonToStop(timeout: 1) {
 			daemonLog("incompatible daemon stopped after SIGKILL")
@@ -305,14 +310,16 @@ final class DaemonClient {
 			return []
 		}
 
-		return output
+		return
+			output
 			.split(whereSeparator: \.isNewline)
 			.compactMap { pid_t(String($0).trimmingCharacters(in: .whitespacesAndNewlines)) }
 	}
 
 	private func isManagedDaemonProcess(_ processID: pid_t) -> Bool {
 		guard processID > 0 && processID != Darwin.getpid(),
-				let command = processCommand(processID) else {
+			let command = processCommand(processID)
+		else {
 			return false
 		}
 
@@ -367,8 +374,8 @@ final class DaemonClient {
 		}
 
 		daemonLog(
-			"starting daemon executable=\(executableURL.path) socket=\(socketPath) " +
-            "sessions=\(config.sessionsDirectory.path) idleTimeout=\(config.idleTimeout) log=\(config.logPath)"
+			"starting daemon executable=\(executableURL.path) socket=\(socketPath) "
+				+ "sessions=\(config.sessionsDirectory.path) idleTimeout=\(config.idleTimeout) log=\(config.logPath)"
 		)
 		let process = Process()
 		process.executableURL = executableURL
@@ -403,7 +410,8 @@ final class DaemonClient {
 				let response = try sendWithoutStarting(WireRequest(command: .ping))
 				if response.ok,
 					response.protocolVersion == WireProtocol.version,
-					try isCompatibleEnvironment(response.environment) {
+					try isCompatibleEnvironment(response.environment)
+				{
 					daemonLog("daemon ready pid=\(process.processIdentifier)")
 					return
 				}

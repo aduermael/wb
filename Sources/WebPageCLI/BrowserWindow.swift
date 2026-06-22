@@ -77,22 +77,25 @@ enum BrowserApplicationHost {
 		mainMenu.addItem(applicationMenuItem)
 
 		let applicationMenu = NSMenu(title: appName)
-		applicationMenu.addItem(NSMenuItem(
-			title: "Hide \(appName)",
-			action: #selector(NSApplication.hide(_:)),
-			keyEquivalent: "h"
-		))
-		applicationMenu.addItem(NSMenuItem(
-			title: "Hide Others",
-			action: #selector(NSApplication.hideOtherApplications(_:)),
-			keyEquivalent: "h"
-		))
+		applicationMenu.addItem(
+			NSMenuItem(
+				title: "Hide \(appName)",
+				action: #selector(NSApplication.hide(_:)),
+				keyEquivalent: "h"
+			))
+		applicationMenu.addItem(
+			NSMenuItem(
+				title: "Hide Others",
+				action: #selector(NSApplication.hideOtherApplications(_:)),
+				keyEquivalent: "h"
+			))
 		applicationMenu.items.last?.keyEquivalentModifierMask = [.command, .option]
-		applicationMenu.addItem(NSMenuItem(
-			title: "Show All",
-			action: #selector(NSApplication.unhideAllApplications(_:)),
-			keyEquivalent: ""
-		))
+		applicationMenu.addItem(
+			NSMenuItem(
+				title: "Show All",
+				action: #selector(NSApplication.unhideAllApplications(_:)),
+				keyEquivalent: ""
+			))
 		applicationMenu.addItem(.separator())
 		let quitItem = NSMenuItem(
 			title: "Quit \(appName)",
@@ -107,59 +110,68 @@ enum BrowserApplicationHost {
 		mainMenu.addItem(editMenuItem)
 
 		let editMenu = NSMenu(title: "Edit")
-		editMenu.addItem(NSMenuItem(
-			title: "Undo",
-			action: Selector(("undo:")),
-			keyEquivalent: "z"
-		))
-		editMenu.addItem(NSMenuItem(
-			title: "Redo",
-			action: Selector(("redo:")),
-			keyEquivalent: "Z"
-		))
+		editMenu.addItem(
+			NSMenuItem(
+				title: "Undo",
+				action: Selector(("undo:")),
+				keyEquivalent: "z"
+			))
+		editMenu.addItem(
+			NSMenuItem(
+				title: "Redo",
+				action: Selector(("redo:")),
+				keyEquivalent: "Z"
+			))
 		editMenu.addItem(.separator())
-		editMenu.addItem(NSMenuItem(
-			title: "Cut",
-			action: #selector(NSText.cut(_:)),
-			keyEquivalent: "x"
-		))
-		editMenu.addItem(NSMenuItem(
-			title: "Copy",
-			action: #selector(NSText.copy(_:)),
-			keyEquivalent: "c"
-		))
-		editMenu.addItem(NSMenuItem(
-			title: "Paste",
-			action: #selector(NSText.paste(_:)),
-			keyEquivalent: "v"
-		))
+		editMenu.addItem(
+			NSMenuItem(
+				title: "Cut",
+				action: #selector(NSText.cut(_:)),
+				keyEquivalent: "x"
+			))
+		editMenu.addItem(
+			NSMenuItem(
+				title: "Copy",
+				action: #selector(NSText.copy(_:)),
+				keyEquivalent: "c"
+			))
+		editMenu.addItem(
+			NSMenuItem(
+				title: "Paste",
+				action: #selector(NSText.paste(_:)),
+				keyEquivalent: "v"
+			))
 		editMenu.addItem(.separator())
-		editMenu.addItem(NSMenuItem(
-			title: "Select All",
-			action: #selector(NSText.selectAll(_:)),
-			keyEquivalent: "a"
-		))
+		editMenu.addItem(
+			NSMenuItem(
+				title: "Select All",
+				action: #selector(NSText.selectAll(_:)),
+				keyEquivalent: "a"
+			))
 		editMenuItem.submenu = editMenu
 
 		let windowMenuItem = NSMenuItem(title: "Window", action: nil, keyEquivalent: "")
 		mainMenu.addItem(windowMenuItem)
 
 		let windowMenu = NSMenu(title: "Window")
-		windowMenu.addItem(NSMenuItem(
-			title: "Close",
-			action: #selector(NSWindow.performClose(_:)),
-			keyEquivalent: "w"
-		))
-		windowMenu.addItem(NSMenuItem(
-			title: "Minimize",
-			action: #selector(NSWindow.performMiniaturize(_:)),
-			keyEquivalent: "m"
-		))
-		windowMenu.addItem(NSMenuItem(
-			title: "Zoom",
-			action: #selector(NSWindow.performZoom(_:)),
-			keyEquivalent: ""
-		))
+		windowMenu.addItem(
+			NSMenuItem(
+				title: "Close",
+				action: #selector(NSWindow.performClose(_:)),
+				keyEquivalent: "w"
+			))
+		windowMenu.addItem(
+			NSMenuItem(
+				title: "Minimize",
+				action: #selector(NSWindow.performMiniaturize(_:)),
+				keyEquivalent: "m"
+			))
+		windowMenu.addItem(
+			NSMenuItem(
+				title: "Zoom",
+				action: #selector(NSWindow.performZoom(_:)),
+				keyEquivalent: ""
+			))
 		windowMenuItem.submenu = windowMenu
 
 		application.mainMenu = mainMenu
@@ -263,10 +275,10 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
 		window.makeKeyAndOrderFront(nil)
 		window.orderFrontRegardless()
 		daemonLog(
-			"window shown browser=\(browserID) visible=\(window.isVisible) " +
-			"miniaturized=\(window.isMiniaturized) key=\(window.isKeyWindow) " +
-			"main=\(window.isMainWindow) appActive=\(application.isActive) " +
-            "panel=\(window is NSPanel)"
+			"window shown browser=\(browserID) visible=\(window.isVisible) "
+				+ "miniaturized=\(window.isMiniaturized) key=\(window.isKeyWindow) "
+				+ "main=\(window.isMainWindow) appActive=\(application.isActive) "
+				+ "panel=\(window is NSPanel)"
 		)
 	}
 
@@ -365,8 +377,8 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
 		)
 		window.setFrame(frame, display: false)
 		daemonLog(
-			"window positioned browser=\(browserID) frame=(\(rectDebugDescription(frame))) " +
-            "screen=\(screen.localizedName)"
+			"window positioned browser=\(browserID) frame=(\(rectDebugDescription(frame))) "
+				+ "screen=\(screen.localizedName)"
 		)
 	}
 }

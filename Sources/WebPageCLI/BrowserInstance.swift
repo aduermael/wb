@@ -155,12 +155,13 @@ final class BrowserInstance {
 
 		let format = try ScreenshotFormat(path: path)
 		let viewport = try await viewportSize()
-		let pngData = try await page.exported(as: .image(
-			region: .rect(CGRect(origin: .zero, size: viewport)),
-			allowTransparentBackground: false,
-			snapshotWidth: viewport.width,
-			afterScreenUpdates: true
-		))
+		let pngData = try await page.exported(
+			as: .image(
+				region: .rect(CGRect(origin: .zero, size: viewport)),
+				allowTransparentBackground: false,
+				snapshotWidth: viewport.width,
+				afterScreenUpdates: true
+			))
 		let imageData = try format.encodedData(fromPNG: pngData)
 
 		let url = URL(fileURLWithPath: path).standardizedFileURL
@@ -281,7 +282,8 @@ final class BrowserInstance {
 
 	private func action(matching reference: String) throws -> BrowserAction {
 		if let index = Int(reference),
-			let action = actions.first(where: { $0.index == index }) {
+			let action = actions.first(where: { $0.index == index })
+		{
 			return action
 		}
 
@@ -378,9 +380,9 @@ enum BrowserCoordinateAction {
 	var point: CGPoint {
 		switch self {
 		case .click(let point),
-				.press(let point),
-				.drag(let point),
-				.release(let point):
+			.press(let point),
+			.drag(let point),
+			.release(let point):
 			return point
 		case .scroll(let point, _, _):
 			return point
@@ -433,12 +435,13 @@ private enum ScreenshotFormat {
 			return pngData
 		case .jpeg:
 			guard let image = NSImage(data: pngData),
-					let tiffData = image.tiffRepresentation,
-					let bitmap = NSBitmapImageRep(data: tiffData),
-					let jpegData = bitmap.representation(
+				let tiffData = image.tiffRepresentation,
+				let bitmap = NSBitmapImageRep(data: tiffData),
+				let jpegData = bitmap.representation(
 					using: .jpeg,
 					properties: [.compressionFactor: 0.9]
-					) else {
+				)
+			else {
 				throw WBError.message("failed to encode JPEG screenshot")
 			}
 			return jpegData

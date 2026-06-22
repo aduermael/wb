@@ -18,8 +18,8 @@ final class BrowserManager: @unchecked Sendable {
 		sessionStore = SessionStore(directory: config.sessionsDirectory)
 		websiteDataStore = WKWebsiteDataStore(forIdentifier: environment.uuid)
 		daemonLog(
-			"environment loaded directory=\(environment.directory.path) " +
-            "uuid=\(environment.uuid.uuidString.lowercased())"
+			"environment loaded directory=\(environment.directory.path) "
+				+ "uuid=\(environment.uuid.uuidString.lowercased())"
 		)
 	}
 
@@ -29,8 +29,8 @@ final class BrowserManager: @unchecked Sendable {
 			daemonLog("request command=\(request.command.rawValue) browser=\(request.browser ?? "-")")
 			let response = try await handle(request)
 			daemonLog(
-				"response command=\(request.command.rawValue) ok=\(response.ok) " +
-				"browser=\(response.browser ?? "-")"
+				"response command=\(request.command.rawValue) ok=\(response.ok) "
+					+ "browser=\(response.browser ?? "-")"
 			)
 			return try WireCodec.encode(response)
 		} catch {
@@ -90,10 +90,11 @@ final class BrowserManager: @unchecked Sendable {
 				page = try await browserState.browser.open(url)
 			} catch {
 				daemonLog(
-					"open failed browser=\(browserState.browser.id) createdForOpen=\(browserState.createdForOpen) " +
-                    "error=\(error.localizedDescription)"
+					"open failed browser=\(browserState.browser.id) createdForOpen=\(browserState.createdForOpen) "
+						+ "error=\(error.localizedDescription)"
 				)
-				let failedPage = await browserState.browser.bestEffortSnapshot(fallbackURL: url.absoluteString)
+				let failedPage = await browserState.browser.bestEffortSnapshot(
+					fallbackURL: url.absoluteString)
 				scheduleAutosave(browserState.browser, reason: "open-failed")
 				return WireResponse.failure(error.localizedDescription)
 					.withBrowser(browserState.browser.id)
@@ -334,7 +335,8 @@ final class BrowserManager: @unchecked Sendable {
 			_ = try await dump(browser)
 			daemonLog("autosave complete id=\(browser.id) reason=\(reason)")
 		} catch {
-			daemonLog("autosave failed id=\(browser.id) reason=\(reason) error=\(error.localizedDescription)")
+			daemonLog(
+				"autosave failed id=\(browser.id) reason=\(reason) error=\(error.localizedDescription)")
 		}
 	}
 
@@ -342,8 +344,8 @@ final class BrowserManager: @unchecked Sendable {
 		let activeIDs = browsers.keys.sorted().joined(separator: ",").nilIfEmpty ?? "-"
 		let dumpedIDs = sessionStore.browserIDs().joined(separator: ",").nilIfEmpty ?? "-"
 		daemonLog(
-			"unknown browser id=\(id) active=\(activeIDs) dumped=\(dumpedIDs) " +
-            "sessions=\(sessionStore.directory.path)"
+			"unknown browser id=\(id) active=\(activeIDs) dumped=\(dumpedIDs) "
+				+ "sessions=\(sessionStore.directory.path)"
 		)
 		return WBError.message("unknown browser \(id)")
 	}
@@ -358,8 +360,8 @@ final class BrowserManager: @unchecked Sendable {
 		}
 
 		daemonLog(
-			"resume start id=\(dump.browser) showingWindow=\(showingWindow) " +
-			"url=\(dump.url ?? dump.snapshot?.url ?? "-")"
+			"resume start id=\(dump.browser) showingWindow=\(showingWindow) "
+				+ "url=\(dump.url ?? dump.snapshot?.url ?? "-")"
 		)
 		let browser = createBrowser(
 			id: dump.browser,
@@ -373,7 +375,8 @@ final class BrowserManager: @unchecked Sendable {
 
 		let resumeURL = dump.url ?? dump.snapshot.flatMap { $0.url }
 		guard let rawURL = resumeURL.nilIfEmpty,
-				let url = URL(string: rawURL) else {
+			let url = URL(string: rawURL)
+		else {
 			daemonLog("resume has no URL id=\(dump.browser)")
 			return browser
 		}

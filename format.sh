@@ -3,14 +3,12 @@ set -eu
 
 script_dir=$(CDPATH= cd "$(dirname "$0")" && pwd)
 
-swift format lint \
+swift format format \
 	--configuration "$script_dir/.swift-format" \
+	--in-place \
 	--parallel \
 	--recursive \
-	--strict \
 	"$script_dir/Package.swift" \
 	"$script_dir/Sources" \
 	"$script_dir/Tests" \
 	"$script_dir/Tools"
-
-swift run --quiet --package-path "$script_dir" wblint "$script_dir"

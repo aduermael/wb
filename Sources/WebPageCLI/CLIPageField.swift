@@ -21,7 +21,8 @@ enum PageField: String, CaseIterable, Hashable {
 	}
 
 	static func parseList(_ rawValue: String) throws -> Set<PageField> {
-		let names = rawValue
+		let names =
+			rawValue
 			.split(separator: ",")
 			.map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
 			.filter { !$0.isEmpty }
