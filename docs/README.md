@@ -12,9 +12,13 @@ Migration note: older sessions created in a cwd-local `wb/` directory or a non-r
 
 The `page` command refreshes the action list for the current document. If the page navigates or rerenders, run `wb page <id>` again before using action numbers from older output.
 
-Coordinate commands use top-left origin coordinates in the current web content viewport and do not open a window. `screenshot` captures that same viewport, so agents can inspect the image and use matching coordinates for `click`, `press`, `drag`, `release`, and `scroll`. If the browser is already visible through `wb show`, the same page updates are visible there.
+URL opens return when the page HTML is ready by default. Use `--wait-resources` to wait for scripts, styles, images, and fetches. `--resource-timeout <seconds>` adjusts that wait, implies `--wait-resources`, and is capped at 100 seconds.
 
-Browser dumps in `.wb/sessions` store resumable browser metadata, not full page text, image lists, or action details. Use `wb page <id>` for live page inspection when needed.
+`wb page` resource entries are capped at 250 items to keep JSON output bounded. `resourceCount` reports the total discovered resources, which may be larger than the returned `resources` array.
+
+Coordinate commands use top-left origin coordinates in the current web content viewport and do not open a window. `screenshot` waits for resources by default, pauses 0.3 seconds for visual settling, then captures that same viewport, so agents can inspect the image and use matching coordinates for `click`, `press`, `drag`, `release`, and `scroll`. Use `--capture-delay <seconds>` to adjust that final pause, or 0 to disable it. If the browser is already visible through `wb show`, the same page updates are visible there.
+
+Browser dumps in `.wb/sessions` store resumable browser metadata, not full page text, resource lists, or action details. Use `wb page <id>` for live page inspection when needed.
 
 The `show` command attaches a native window to the same browser used by headless commands. While a browser window is visible, the daemon does not idle-exit. Use `wb hide <id>` or close the window to allow normal idle shutdown again.
 

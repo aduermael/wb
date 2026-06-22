@@ -104,8 +104,9 @@ private struct CommandErrorOutput: Encodable {
 	let title: String?
 	let url: String?
 	let loading: Bool
+	let resourcesLoading: Bool
 	let progress: Double?
-	let images: Int?
+	let resources: Int?
 	let htmlBytes: Int?
 	let jsonBytes: Int?
 	let actions: Int?
@@ -119,8 +120,9 @@ private struct CommandErrorOutput: Encodable {
 		title = page.flatMap { $0.title.nilIfEmpty }
 		url = page.flatMap { $0.url } ?? response.url
 		loading = page?.loading ?? false
+		resourcesLoading = page?.resourcesLoading ?? false
 		progress = page?.progress
-		images = page?.imageCount
+		resources = page?.resourceCount
 		htmlBytes = page?.htmlBytes
 		jsonBytes = page.flatMap(defaultPageJSONByteCount)
 		actions = page.map { $0.actions.count }
@@ -133,8 +135,9 @@ private struct PageSummaryOutput: Encodable {
 	let title: String?
 	let url: String?
 	let loading: Bool
+	let resourcesLoading: Bool
 	let progress: Double?
-	let images: Int?
+	let resources: Int?
 	let htmlBytes: Int?
 	let jsonBytes: Int?
 	let actions: Int?
@@ -145,8 +148,9 @@ private struct PageSummaryOutput: Encodable {
 		title = page.flatMap { $0.title.nilIfEmpty }
 		url = page.flatMap { $0.url }
 		loading = page?.loading ?? false
+		resourcesLoading = page?.resourcesLoading ?? false
 		progress = page?.progress
-		images = page?.imageCount
+		resources = page?.resourceCount
 		htmlBytes = page?.htmlBytes
 		jsonBytes = page.flatMap(defaultPageJSONByteCount)
 		actions = page.map { $0.actions.count }
@@ -158,9 +162,10 @@ private struct PageOutput: Encodable {
 	let title: String?
 	let url: String?
 	let loading: Bool
+	let resourcesLoading: Bool
 	let progress: Double
-	let imageCount: Int?
-	let images: [PageImageOutput]
+	let resourceCount: Int?
+	let resources: [PageResourceOutput]
 	let htmlBytes: Int?
 	let jsonBytes: Int?
 	let text: String?
@@ -172,9 +177,10 @@ private struct PageOutput: Encodable {
 		title = page.title.nilIfEmpty
 		url = page.url
 		loading = page.loading
+		resourcesLoading = page.resourcesLoading
 		progress = page.progress
-		imageCount = page.imageCount
-		images = page.images.map { PageImageOutput(image: $0) }
+		resourceCount = page.resourceCount
+		resources = page.resources.map { PageResourceOutput(resource: $0) }
 		htmlBytes = page.htmlBytes
 		jsonBytes = includeJSONBytes ? defaultPageJSONByteCount(page) : nil
 		text = page.text.nilIfEmpty
@@ -189,9 +195,10 @@ private struct PageOutput: Encodable {
 		try encode(title, for: .title, in: &container)
 		try encode(url, for: .url, in: &container)
 		try encode(loading, for: .loading, in: &container)
+		try encode(resourcesLoading, for: .resourcesLoading, in: &container)
 		try encode(progress, for: .progress, in: &container)
-		try encode(imageCount, for: .imageCount, in: &container)
-		try encode(images, for: .images, in: &container)
+		try encode(resourceCount, for: .resourceCount, in: &container)
+		try encode(resources, for: .resources, in: &container)
 		try encode(htmlBytes, for: .htmlBytes, in: &container)
 		try encode(jsonBytes, for: .jsonBytes, in: &container)
 		try encode(text, for: .text, in: &container)
@@ -202,11 +209,12 @@ private struct PageOutput: Encodable {
 		case actions
 		case browser
 		case htmlBytes
-		case imageCount
-		case images
 		case jsonBytes
 		case loading
 		case progress
+		case resourceCount
+		case resources
+		case resourcesLoading
 		case text
 		case title
 		case url
@@ -258,15 +266,17 @@ private struct PageActionOutput: Encodable {
 	}
 }
 
-private struct PageImageOutput: Encodable {
+private struct PageResourceOutput: Encodable {
 	let index: Int
+	let type: String
 	let url: String
 	let alt: String?
 
-	init(image: BrowserImage) {
-		index = image.index
-		url = image.url
-		alt = image.alt.nilIfEmpty
+	init(resource: BrowserResource) {
+		index = resource.index
+		type = resource.type
+		url = resource.url
+		alt = resource.alt.nilIfEmpty
 	}
 }
 

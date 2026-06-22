@@ -1,7 +1,6 @@
 /// Stores the JavaScript snippets injected into WebKit pages for action
 /// discovery, interaction, DOM stats, viewport measurement, text extraction,
 /// and evaluation.
-
 @available(macOS 26.0, *)
 extension BrowserInstance {
 	static let listActionsScript = """
@@ -191,21 +190,596 @@ extension BrowserInstance {
 		const htmlBytes = typeof TextEncoder === "function"
 		  ? new TextEncoder().encode(html).length
 		  : new Blob([html]).size;
-		const imageElements = Array.from(document.querySelectorAll("img"));
-		const images = imageElements
-		  .map((img, index) => ({
-		    index: index + 1,
-		    url: String(img.currentSrc || img.src || img.getAttribute("src") || "").trim(),
+		const performanceEntries = performance.getEntriesByType
+		  ? performance.getEntriesByType("resource")
+		  : [];
+		const imageAltByURL = new Map(
+		  Array.from(document.images || [])
+		    .map((img) => [
+		      String(img.currentSrc || img.src || img.getAttribute("src") || "").trim(),
+		      String(img.getAttribute("alt") || "").trim()
+		    ])
+		    .filter(([url]) => url)
+		);
+
+		function typeFor(url, initiatorType) {
+		  const initiator = String(initiatorType || "").toLowerCase();
+		  const pathname = (() => {
+		    try {
+		      return new URL(url, document.baseURI).pathname.toLowerCase();
+		    } catch {
+		      return String(url || "").toLowerCase();
+		    }
+		  })();
+
+		  if (initiator === "img" || initiator === "image" || /\\.(avif|gif|jpe?g|png|svg|webp)$/.test(pathname)) {
+		    return "image";
+		  }
+		  if (initiator === "script" || /\\.(cjs|js|mjs)$/.test(pathname)) return "script";
+		  if (initiator === "css" || initiator === "style" || /\\.css$/.test(pathname)) return "style";
+		  if (initiator === "font" || /\\.(otf|ttf|woff2?)$/.test(pathname)) return "font";
+		  if (initiator === "audio" || initiator === "video" || /\\.(m4a|m4v|mp3|mp4|ogg|webm)$/.test(pathname)) {
+		    return "media";
+		  }
+		  if (/\\.json$/.test(pathname)) return "json";
+		  if (initiator === "xmlhttprequest") return "xhr";
+		  if (initiator === "fetch") return "fetch";
+		  if (initiator === "iframe" || initiator === "frame") return "document";
+		  if (initiator === "link") return "link";
+		  return initiator || "other";
+		}
+
+		const seen = new Set();
+		const resources = performanceEntries
+		  .map((entry) => {
+		    const url = String(entry.name || "").trim();
+		    if (!url || seen.has(url)) return null;
+		    seen.add(url);
+		    const type = typeFor(url, entry.initiatorType);
+		    return {
+		      index: seen.size,
+		      type,
+		      url,
+		      alt: type === "image" ? (imageAltByURL.get(url) || "") : ""
+		    };
+		  })
+		  .filter(Boolean);
+
+		for (const img of Array.from(document.images || [])) {
+		  const url = String(img.currentSrc || img.src || img.getAttribute("src") || "").trim();
+		  if (!url || seen.has(url) || !img.complete) continue;
+		  seen.add(url);
+		  resources.push({
+		    index: seen.size,
+		    type: "image",
+		    url,
 		    alt: String(img.getAttribute("alt") || "").trim()
-		  }))
-		  .filter((image) => image.url)
-		  .slice(0, 250);
+		  });
+		}
+
+		const tracker = window.__wbResourceTracker || {};
+		const trackedTotalResourceCount = Number(tracker.totalResourceCount || 0);
+		const trackedCurrentResourceCount = Number(tracker.resourceCount || 0);
+		const resourceCount = Math.max(
+		  resources.length,
+		  Number.isFinite(trackedTotalResourceCount) ? trackedTotalResourceCount : 0,
+		  Number.isFinite(trackedCurrentResourceCount) ? trackedCurrentResourceCount : 0
+		);
+
 		return JSON.stringify({
-		  imageCount: imageElements.length,
-		  images,
+		  resourceCount,
+		  resources: resources.slice(0, 250),
 		  htmlBytes
 		});
 		"""
+
+	static let resourceTrackerScript = """
+		(() => {
+		  try {
+		    performance.setResourceTimingBufferSize?.(5000);
+		  } catch {}
+
+		  const now = performance.now ? performance.now() : Date.now();
+		  const initialResourceEntries = performance.getEntriesByType
+		    ? performance.getEntriesByType("resource")
+		    : [];
+		  const currentResourceCount = initialResourceEntries.length;
+		  const currentReadyState = document.readyState || "";
+		  let tracker = window.__wbResourceTracker;
+
+		  if (!tracker) {
+		    tracker = {
+		      pendingRequests: 0,
+		      pendingResources: 0,
+		      lastActivityAt: now - 1000,
+		      resourceCount: currentResourceCount,
+		      totalResourceCount: 0,
+		      resourceEntryKeys: new Set(),
+		      readyState: currentReadyState,
+		      cssImageURLs: new Set(),
+		      cssImageProbes: new Map(),
+		      elements: new WeakMap(),
+		      installed: false,
+		      waitingForObserver: false
+		    };
+		    window.__wbResourceTracker = tracker;
+		  }
+		  if (!tracker.elements) {
+		    tracker.elements = new WeakMap();
+		  }
+		  if (!tracker.resourceEntryKeys || typeof tracker.resourceEntryKeys.has !== "function") {
+		    tracker.resourceEntryKeys = new Set();
+		  }
+		  if (!tracker.cssImageURLs || typeof tracker.cssImageURLs.has !== "function") {
+		    tracker.cssImageURLs = new Set();
+		  }
+		  if (!tracker.cssImageProbes || typeof tracker.cssImageProbes.set !== "function") {
+		    tracker.cssImageProbes = new Map();
+		  }
+		  if (!Number.isFinite(Number(tracker.totalResourceCount))) {
+		    tracker.totalResourceCount = 0;
+		  }
+		  if (typeof tracker.readyState !== "string") {
+		    tracker.readyState = "";
+		  }
+		  tracker.resourceCount = currentResourceCount;
+
+		  const cssImageScanLimit = 160;
+		  const cssImageMutationScanLimit = 80;
+		  const cssImageProbeLimit = 32;
+		  const cssImageURLLimit = 1000;
+		  const dynamicResourceFallbackMS = 30000;
+
+		  function currentTime() {
+		    return performance.now ? performance.now() : Date.now();
+		  }
+
+		  function markActivity() {
+		    tracker.lastActivityAt = currentTime();
+		  }
+
+		  function resourceEntryKey(entry) {
+		    return [
+		      String(entry.name || ""),
+		      String(entry.initiatorType || ""),
+		      Number(entry.startTime || 0).toFixed(3),
+		      Number(entry.duration || 0).toFixed(3)
+		    ].join("|");
+		  }
+
+		  function recordPerformanceResources(entries) {
+		    let added = false;
+		    for (const entry of Array.from(entries || [])) {
+		      if (!entry || !String(entry.name || "").trim()) continue;
+		      const key = resourceEntryKey(entry);
+		      if (tracker.resourceEntryKeys.has(key)) continue;
+		      tracker.resourceEntryKeys.add(key);
+		      tracker.totalResourceCount = Math.max(0, Number(tracker.totalResourceCount) || 0) + 1;
+		      added = true;
+		    }
+		    if (added) markActivity();
+		    return added;
+		  }
+
+		  function noteReadyStateTransition() {
+		    const readyState = document.readyState || "";
+		    if (!readyState || readyState === tracker.readyState) return false;
+		    tracker.readyState = readyState;
+		    markActivity();
+		    return true;
+		  }
+
+		  function visibleElement(el) {
+		    if (!el || el.nodeType !== 1) return false;
+		    try {
+		      if (!document.documentElement || !document.documentElement.contains(el)) return false;
+		      const style = window.getComputedStyle(el);
+		      const rect = el.getBoundingClientRect();
+		      if (!style || style.display === "none" || style.visibility === "hidden" || style.opacity === "0") {
+		        return false;
+		      }
+		      return rect.width > 0 && rect.height > 0;
+		    } catch {
+		      return false;
+		    }
+		  }
+
+		  function intersectsViewport(el) {
+		    if (!visibleElement(el)) return false;
+		    try {
+		      const rect = el.getBoundingClientRect();
+		      return rect.bottom >= 0 && rect.right >= 0 &&
+		        rect.top <= (window.innerHeight || document.documentElement?.clientHeight || 0) &&
+		        rect.left <= (window.innerWidth || document.documentElement?.clientWidth || 0);
+		    } catch { return false; }
+		  }
+
+		  function nodeTouchesVisibleDOM(node) {
+		    if (!node) return false;
+		    if (node.nodeType === Node.TEXT_NODE) {
+		      return String(node.textContent || "").trim().length > 0 && visibleElement(node.parentElement);
+		    }
+		    if (node.nodeType !== Node.ELEMENT_NODE) return false;
+		    return visibleElement(node) || visibleElement(node.parentElement);
+		  }
+
+		  function mutationTouchesVisibleDOM(mutation) {
+		    if (mutation.type === "characterData") {
+		      return nodeTouchesVisibleDOM(mutation.target);
+		    }
+		    if (nodeTouchesVisibleDOM(mutation.target)) return true;
+		    for (const node of Array.from(mutation.addedNodes || [])) {
+		      if (nodeTouchesVisibleDOM(node)) return true;
+		    }
+		    return false;
+		  }
+
+		  function resourceURL(el) {
+		    const tag = (el.tagName || "").toLowerCase();
+		    if (tag === "img") return el.currentSrc || el.src || el.getAttribute("src") || el.srcset || "";
+		    if (tag === "script" || tag === "iframe") return el.src || el.getAttribute("src") || "";
+		    if (tag === "audio" || tag === "video") return el.src || el.getAttribute("src") || el.poster || "";
+		    if (tag === "link") return el.href || el.getAttribute("href") || "";
+		    return "";
+		  }
+
+		  function finishRequest() {
+		    tracker.pendingRequests = Math.max(0, tracker.pendingRequests - 1);
+		    markActivity();
+		  }
+
+		  function beginResource(el, url, fallbackAfterMS = 0) {
+		    const prior = tracker.elements.get(el);
+		    if (prior && prior.pending && prior.url === url) return;
+		    if (prior && prior.pending) {
+		      prior.url = url;
+		      return;
+		    }
+
+		    const state = { pending: true, url, fallbackTimer: null };
+		    tracker.elements.set(el, state);
+		    tracker.pendingResources += 1;
+		    markActivity();
+
+		    const done = () => {
+		      const current = tracker.elements.get(el);
+		      if (!current || !current.pending) return;
+		      current.pending = false;
+		      if (current.fallbackTimer) {
+		        clearTimeout(current.fallbackTimer);
+		        current.fallbackTimer = null;
+		      }
+		      tracker.pendingResources = Math.max(0, tracker.pendingResources - 1);
+		      markActivity();
+		    };
+
+		    el.addEventListener("load", done, { once: true });
+		    el.addEventListener("error", done, { once: true });
+		    if (fallbackAfterMS > 0) {
+		      state.fallbackTimer = setTimeout(done, fallbackAfterMS);
+		    }
+		    if ((el.tagName || "").toLowerCase() === "img" && el.complete) {
+		      done();
+		    }
+		  }
+
+		  function normalizedURL(rawURL) {
+		    const raw = String(rawURL || "").trim().replace(/^["']|["']$/g, "");
+		    if (!raw || raw === "none") return "";
+		    try {
+		      const url = new URL(raw, document.baseURI);
+		      if (["about:", "data:", "javascript:"].includes(url.protocol)) return "";
+		      return url.href;
+		    } catch {
+		      return raw;
+		    }
+		  }
+
+		  function cssImageURLs(style) {
+		    const urls = [];
+		    const properties = [
+		      "background-image",
+		      "border-image-source",
+		      "list-style-image",
+		      "cursor",
+		      "mask-image",
+		      "-webkit-mask-image"
+		    ];
+		    for (const property of properties) {
+		      const value = String(style.getPropertyValue?.(property) || "");
+		      const matcher = /url\\((?:"([^"]*)"|'([^']*)'|([^)]*))\\)/g;
+		      let match = null;
+		      while ((match = matcher.exec(value)) && urls.length < 12) {
+		        const url = normalizedURL(match[1] || match[2] || match[3] || "");
+		        if (url) urls.push(url);
+		      }
+		    }
+		    return urls;
+		  }
+
+		  function beginCSSImage(url) {
+		    if (!url || tracker.cssImageURLs.has(url)) return false;
+		    if (tracker.cssImageProbes.size >= cssImageProbeLimit) return false;
+		    if (tracker.cssImageURLs.size >= cssImageURLLimit) return false;
+		    tracker.cssImageURLs.add(url);
+		    tracker.pendingResources += 1;
+		    markActivity();
+
+		    const probe = new Image();
+		    let finished = false;
+		    const done = () => {
+		      if (finished) return;
+		      finished = true;
+		      tracker.cssImageProbes.delete(url);
+		      tracker.pendingResources = Math.max(0, tracker.pendingResources - 1);
+		      markActivity();
+		    };
+
+		    tracker.cssImageProbes.set(url, probe);
+		    probe.onload = done;
+		    probe.onerror = done;
+		    probe.src = url;
+		    if (probe.complete) done();
+		    return true;
+		  }
+
+		  function scanCSSImages(root, limit = cssImageScanLimit) {
+		    if (!root || root.nodeType !== 1 || !document.documentElement) return false;
+		    let found = false;
+		    let inspected = 0;
+		    const inspect = (el) => {
+		      if (!el || inspected >= limit) return false;
+		      inspected += 1;
+		      if (!visibleElement(el)) return inspected < limit;
+		      let style = null;
+		      try {
+		        style = window.getComputedStyle(el);
+		      } catch {
+		        return inspected < limit;
+		      }
+		      for (const url of cssImageURLs(style)) {
+		        found = beginCSSImage(url) || found;
+		      }
+		      return inspected < limit;
+		    };
+
+		    if (!inspect(root)) return found;
+		    const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
+		    while (inspected < limit) {
+		      const el = walker.nextNode();
+		      if (!el) break;
+		      inspect(el);
+		    }
+		    return found;
+		  }
+
+		  function trackElement(el, dynamic) {
+		    if (!el || el.nodeType !== 1) return false;
+		    const tag = (el.tagName || "").toLowerCase();
+		    const url = String(resourceURL(el) || "").trim();
+		    if (!url) return false;
+		    if (tag === "img") {
+		      if (String(el.loading || "").toLowerCase() === "lazy" && !intersectsViewport(el)) return false;
+		      if (!el.complete) beginResource(el, url);
+		      return true;
+		    }
+		    if (!dynamic) return false;
+		    if (tag === "link") {
+		      const rel = String(el.rel || el.getAttribute("rel") || "").toLowerCase();
+		      if (!rel.split(/\\s+/).includes("stylesheet")) return false;
+		    }
+		    if (["script", "iframe", "audio", "video", "link"].includes(tag)) {
+		      beginResource(el, url, dynamicResourceFallbackMS);
+		      return true;
+		    }
+		    return false;
+		  }
+
+		  function scanResources(root, dynamic) {
+		    if (!root || root.nodeType !== 1) return false;
+		    let found = trackElement(root, dynamic);
+		    root.querySelectorAll?.("img,script[src],iframe[src],audio[src],video[src],video[poster],link[href]")
+		      ?.forEach((el) => {
+		        found = trackElement(el, dynamic) || found;
+		      });
+		    return found;
+		  }
+
+		  recordPerformanceResources(initialResourceEntries);
+		  noteReadyStateTransition();
+		  window.__wbRecordPerformanceResources = recordPerformanceResources;
+		  window.__wbNoteReadyStateTransition = noteReadyStateTransition;
+
+		  const canObservePerformance =
+		    !tracker.performanceObserver &&
+		    !tracker.performanceObserverUnavailable &&
+		    typeof PerformanceObserver === "function";
+		  if (canObservePerformance) {
+		    const performanceObserver = new PerformanceObserver((list) => {
+		      recordPerformanceResources(list.getEntries ? list.getEntries() : []);
+		    });
+		    try {
+		      performanceObserver.observe({ type: "resource", buffered: true });
+		      tracker.performanceObserver = performanceObserver;
+		    } catch {
+		      try {
+		        performanceObserver.observe({ entryTypes: ["resource"] });
+		        tracker.performanceObserver = performanceObserver;
+		      } catch {
+		        tracker.performanceObserverUnavailable = true;
+		      }
+		    }
+		  }
+
+		  if (!tracker.installed) {
+		    tracker.installed = true;
+
+		    if (typeof window.fetch === "function") {
+		      const originalFetch = window.fetch;
+		      window.fetch = function(...args) {
+		        tracker.pendingRequests += 1;
+		        markActivity();
+		        try {
+		          return Promise.resolve(originalFetch.apply(this, args)).finally(finishRequest);
+		        } catch (error) {
+		          finishRequest();
+		          throw error;
+		        }
+		      };
+		    }
+
+		    if (window.XMLHttpRequest && XMLHttpRequest.prototype) {
+		      const originalOpen = XMLHttpRequest.prototype.open;
+		      const originalSend = XMLHttpRequest.prototype.send;
+		      XMLHttpRequest.prototype.open = function(...args) {
+		        this.__wbResourceTracked = false;
+		        return originalOpen.apply(this, args);
+		      };
+		      XMLHttpRequest.prototype.send = function(...args) {
+		        let done = null;
+		        if (!this.__wbResourceTracked) {
+		          this.__wbResourceTracked = true;
+		          tracker.pendingRequests += 1;
+		          markActivity();
+		          done = () => {
+		            if (!this.__wbResourceTracked) return;
+		            this.__wbResourceTracked = false;
+		            finishRequest();
+		          };
+		          this.addEventListener("loadend", done, { once: true });
+		          this.addEventListener("error", done, { once: true });
+		          this.addEventListener("abort", done, { once: true });
+		        }
+		        try {
+		          return originalSend.apply(this, args);
+		        } catch (error) {
+		          if (done) done();
+		          throw error;
+		        }
+		      };
+		    }
+
+		    document.addEventListener("load", (event) => {
+		      if (event.target && trackElement(event.target, true)) markActivity();
+		    }, true);
+		    document.addEventListener("error", (event) => {
+		      if (event.target && trackElement(event.target, true)) markActivity();
+		    }, true);
+		    document.addEventListener("readystatechange", noteReadyStateTransition);
+		  }
+
+		  function installObserver() {
+		    const root = document.documentElement;
+		    if (!root) return false;
+		    if (tracker.observer && tracker.observedRoot === root) {
+		      scanCSSImages(root);
+		      return true;
+		    }
+		    if (tracker.observer) {
+		      try {
+		        tracker.observer.disconnect();
+		      } catch {}
+		      tracker.observer = null;
+		    }
+
+		    Array.from(document.images || []).forEach((img) => trackElement(img, false));
+		    scanCSSImages(root);
+		    tracker.observer = new MutationObserver((mutations) => {
+		      let foundResourceMutation = false;
+		      let foundVisibleMutation = false;
+		      for (const mutation of mutations) {
+		        if (mutation.type === "childList") {
+		          mutation.addedNodes.forEach((node) => {
+		            foundResourceMutation = scanResources(node, true) || foundResourceMutation;
+		            foundResourceMutation =
+		              scanCSSImages(node, cssImageMutationScanLimit) || foundResourceMutation;
+		          });
+		        } else if (mutation.target) {
+		          foundResourceMutation = trackElement(mutation.target, true) || foundResourceMutation;
+		          foundResourceMutation =
+		            scanCSSImages(mutation.target, cssImageMutationScanLimit) || foundResourceMutation;
+		        }
+		        foundVisibleMutation = mutationTouchesVisibleDOM(mutation) || foundVisibleMutation;
+		      }
+		      if (foundResourceMutation || foundVisibleMutation) markActivity();
+		    });
+		    tracker.observedRoot = root;
+		    tracker.observer.observe(root, {
+		      subtree: true,
+		      childList: true,
+		      characterData: true,
+		      attributes: true,
+		      attributeFilter: [
+		        "aria-hidden",
+		        "class",
+		        "hidden",
+		        "href",
+		        "poster",
+		        "rel",
+		        "src",
+		        "srcset",
+		        "style"
+		      ]
+		    });
+		    return true;
+		  }
+
+		  window.__wbInstallResourceObserver = installObserver;
+		  if (!installObserver() && !tracker.waitingForObserver) {
+		    tracker.waitingForObserver = true;
+		    const retry = () => {
+		      if (!installObserver()) return;
+		      tracker.waitingForObserver = false;
+		      document.removeEventListener("readystatechange", retry);
+		    };
+		    document.addEventListener("readystatechange", retry);
+		    document.addEventListener("DOMContentLoaded", retry, { once: true });
+		  }
+		})();
+		"""
+
+	static let loadStatusScript =
+		resourceTrackerScript + """
+
+			if (typeof window.__wbInstallResourceObserver === "function") {
+			  window.__wbInstallResourceObserver();
+			}
+
+			const statusNow = performance.now ? performance.now() : Date.now();
+			const currentResourceEntries = performance.getEntriesByType
+			  ? performance.getEntriesByType("resource")
+			  : [];
+			const currentResourceCount = currentResourceEntries.length;
+			const tracker = window.__wbResourceTracker || {
+			  pendingRequests: 0,
+			  pendingResources: 0,
+			  lastActivityAt: statusNow - 1000,
+			  resourceCount: currentResourceCount,
+			  totalResourceCount: currentResourceCount
+			};
+			window.__wbResourceTracker = tracker;
+
+			if (typeof window.__wbRecordPerformanceResources === "function") {
+			  window.__wbRecordPerformanceResources(currentResourceEntries);
+			} else if (currentResourceCount !== tracker.resourceCount) {
+			  tracker.resourceCount = currentResourceCount;
+			  tracker.totalResourceCount = Math.max(
+			    currentResourceCount,
+			    Number(tracker.totalResourceCount || 0)
+			  );
+			  tracker.lastActivityAt = statusNow;
+			}
+			if (typeof window.__wbNoteReadyStateTransition === "function") {
+			  window.__wbNoteReadyStateTransition();
+			}
+
+			return JSON.stringify({
+			  readyState: document.readyState || "",
+			  pendingRequests: Math.max(0, tracker.pendingRequests | 0),
+			  pendingResources: Math.max(0, tracker.pendingResources | 0),
+			  quietFor: Math.max(0, (statusNow - tracker.lastActivityAt) / 1000)
+			});
+			"""
 
 	static let viewportSizeScript = """
 		const root = document.documentElement;
@@ -219,168 +793,6 @@ extension BrowserInstance {
 		  Math.floor(window.innerHeight || root?.clientHeight || body?.clientHeight || 768)
 		);
 		return JSON.stringify({ width, height });
-		"""
-
-	static let coordinateActionScript = """
-		const actionName = String(action || "");
-		const clientX = Number(x);
-		const clientY = Number(y);
-		const scrollDeltaX = Number(deltaX || 0);
-		const scrollDeltaY = Number(deltaY || 0);
-
-		if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) {
-		  return "coordinates must be finite numbers";
-		}
-		if (clientX < 0 || clientY < 0 || clientX >= window.innerWidth || clientY >= window.innerHeight) {
-		  return `coordinate x=${clientX},y=${clientY} is outside viewport ` +
-		    `width=${window.innerWidth} height=${window.innerHeight}`;
-		}
-
-		function targetAtPoint() {
-		  return document.elementFromPoint(clientX, clientY) || document.body || document.documentElement;
-		}
-
-		function targetName(el) {
-		  if (!el) return "page";
-		  const label = (
-		    el.getAttribute?.("aria-label") ||
-		    el.getAttribute?.("title") ||
-		    el.innerText ||
-		    el.textContent ||
-		    el.id ||
-		    el.tagName ||
-		    "element"
-		  ).toString().replace(/\\s+/g, " ").trim();
-		  return label.slice(0, 80) || (el.tagName || "element").toLowerCase();
-		}
-
-		function pointerEvent(type, target, extra = {}) {
-		  const init = {
-		    bubbles: true,
-		    cancelable: true,
-		    composed: true,
-		    view: window,
-		    clientX,
-		    clientY,
-		    screenX: window.screenX + clientX,
-		    screenY: window.screenY + clientY,
-		    button: 0,
-		    buttons: extra.buttons ?? 0,
-		    pointerId: 1,
-		    pointerType: "mouse",
-		    isPrimary: true,
-		    detail: extra.detail ?? 0
-		  };
-		  const EventClass = typeof PointerEvent === "function" ? PointerEvent : MouseEvent;
-		  return target.dispatchEvent(new EventClass(type, init));
-		}
-
-		function mouseEvent(type, target, extra = {}) {
-		  return target.dispatchEvent(new MouseEvent(type, {
-		    bubbles: true,
-		    cancelable: true,
-		    composed: true,
-		    view: window,
-		    clientX,
-		    clientY,
-		    screenX: window.screenX + clientX,
-		    screenY: window.screenY + clientY,
-		    button: 0,
-		    buttons: extra.buttons ?? 0,
-		    detail: extra.detail ?? 0
-		  }));
-		}
-
-		function focusIfPossible(target) {
-		  if (target && typeof target.focus === "function") {
-		    try { target.focus({ preventScroll: true }); } catch (_) { try { target.focus(); } catch (_) {} }
-		  }
-		}
-
-		function press(target) {
-		  window.__wbCoordinatePointer = { target, moved: false };
-		  focusIfPossible(target);
-		  pointerEvent("pointerdown", target, { buttons: 1 });
-		  mouseEvent("mousedown", target, { buttons: 1, detail: 1 });
-		}
-
-		function drag(target) {
-		  const state = window.__wbCoordinatePointer;
-		  const dispatchTarget = state?.target || target;
-		  if (state) state.moved = true;
-		  pointerEvent("pointermove", dispatchTarget, { buttons: 1 });
-		  mouseEvent("mousemove", dispatchTarget, { buttons: 1 });
-		}
-
-		function release(target) {
-		  const state = window.__wbCoordinatePointer;
-		  const dispatchTarget = state?.target || target;
-		  pointerEvent("pointerup", dispatchTarget, { buttons: 0 });
-		  mouseEvent("mouseup", dispatchTarget, { buttons: 0, detail: 1 });
-		  if (!state?.moved) {
-		    mouseEvent("click", dispatchTarget, { buttons: 0, detail: 1 });
-		  }
-		  window.__wbCoordinatePointer = null;
-		}
-
-		function nearestScrollable(start) {
-		  let el = start;
-		  while (el && el !== document.documentElement) {
-		    const style = window.getComputedStyle(el);
-		    const overflowX = style.overflowX || "";
-		    const overflowY = style.overflowY || "";
-		    const canScrollX = /(auto|scroll|overlay)/.test(overflowX) && el.scrollWidth > el.clientWidth;
-		    const canScrollY = /(auto|scroll|overlay)/.test(overflowY) && el.scrollHeight > el.clientHeight;
-		    if (canScrollX || canScrollY) {
-		      return el;
-		    }
-		    el = el.parentElement;
-		  }
-		  return document.scrollingElement || document.documentElement;
-		}
-
-		function scrollAt(target) {
-		  if (!Number.isFinite(scrollDeltaX) || !Number.isFinite(scrollDeltaY)) {
-		    return "scroll deltas must be finite numbers";
-		  }
-		  target.dispatchEvent(new WheelEvent("wheel", {
-		    bubbles: true,
-		    cancelable: true,
-		    composed: true,
-		    view: window,
-		    clientX,
-		    clientY,
-		    deltaX: scrollDeltaX,
-		    deltaY: scrollDeltaY,
-		    deltaMode: WheelEvent.DOM_DELTA_PIXEL
-		  }));
-		  const scroller = nearestScrollable(target);
-		  scroller.scrollBy({ left: scrollDeltaX, top: scrollDeltaY, behavior: "auto" });
-		  return `scrolled x=${clientX},y=${clientY} by deltaX=${scrollDeltaX},deltaY=${scrollDeltaY}`;
-		}
-
-		const target = targetAtPoint();
-		if (!target) return "no element at coordinate";
-
-		switch (actionName) {
-		case "click":
-		  press(target);
-		  release(target);
-		  return `clicked ${targetName(target)} at x=${clientX},y=${clientY}`;
-		case "press":
-		  press(target);
-		  return `pressed ${targetName(target)} at x=${clientX},y=${clientY}`;
-		case "drag":
-		  drag(target);
-		  return `dragged ${targetName(target)} to x=${clientX},y=${clientY}`;
-		case "release":
-		  release(target);
-		  return `released ${targetName(target)} at x=${clientX},y=${clientY}`;
-		case "scroll":
-		  return scrollAt(target);
-		default:
-		  return `unknown coordinate action ${actionName}`;
-		}
 		"""
 
 	static let markdownTextScript = """
@@ -510,9 +922,7 @@ extension BrowserInstance {
 		const value = eval(source);
 		if (typeof value === "undefined") return "undefined";
 		if (value === null) return "null";
-		if (typeof value === "object") {
-		  try { return JSON.stringify(value, null, 2); } catch (error) {}
-		}
+		if (typeof value === "object") { try { return JSON.stringify(value, null, 2); } catch (error) {} }
 		return String(value);
 		"""
 }

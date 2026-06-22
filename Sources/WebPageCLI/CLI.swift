@@ -230,12 +230,19 @@ struct CLIParser {
 			if arguments.containsHelpFlag {
 				return help(.screenshot)
 			}
+			var arguments = arguments
+			let resourceOptions = try parseResourceLoadingOptions(&arguments)
+			let captureDelay = try parseScreenshotCaptureDelayOption(&arguments)
+			let screenshotUsage = [
+				"usage: wb screenshot <id> <destination.png|destination.jpg>",
+				"[--resource-timeout <seconds>]",
+				"[--capture-delay <seconds>]",
+			].joined(separator: " ")
 			let id = try popBrowserID(
 				from: &arguments,
-				usage: "usage: wb screenshot <id> <destination.png|destination.jpg>"
+				usage: screenshotUsage
 			)
-			let destination = try arguments.popFirst(
-				"usage: wb screenshot <id> <destination.png|destination.jpg>")
+			let destination = try arguments.popFirst(screenshotUsage)
 			guard arguments.isEmpty else {
 				throw WBError.message("unexpected screenshot argument \(arguments[0])")
 			}
@@ -243,7 +250,9 @@ struct CLIParser {
 			return CLIInvocation(
 				request: WireRequest(command: .screenshot)
 					.withBrowser(id)
-					.withDestinationPath(absolutePath(for: destination)),
+					.withDestinationPath(absolutePath(for: destination))
+					.withResourceLoading(waitForResources: true, timeout: resourceOptions.timeout)
+					.withScreenshotDelay(captureDelay),
 				renderMode: .message,
 				daemon: .enabled
 			)
@@ -412,6 +421,14 @@ struct CLIParser {
 	}
 
 	private static func parsePositionalOpen(first: String, rest arguments: [String]) throws -> CLIInvocation {
+		var arguments = [first] + arguments
+		let resourceOptions = try parseResourceLoadingOptions(&arguments)
+
+		guard let first = arguments.first else {
+			throw WBError.message("missing URL")
+		}
+		arguments.removeFirst()
+
 		guard !first.hasPrefix("-") else {
 			throw WBError.message("unknown command \(first)")
 		}
@@ -437,7 +454,11 @@ struct CLIParser {
 		return CLIInvocation(
 			request: WireRequest(command: .open)
 				.withBrowser(browser)
-				.withURL(url),
+				.withURL(url)
+				.withResourceLoading(
+					waitForResources: resourceOptions.waitForResources,
+					timeout: resourceOptions.timeout
+				),
 			renderMode: .pageSummary,
 			daemon: .enabled
 		)
@@ -744,6 +765,77 @@ private func parsePageOutputOptions(_ arguments: inout [String]) throws -> PageO
 
 	arguments = remaining
 	return options
+}
+
+private struct ResourceLoadingOptions {
+	var waitForResources = false
+	var timeout: TimeInterval?
+}
+
+private func parseResourceLoadingOptions(_ arguments: inout [String]) throws -> ResourceLoadingOptions {
+	var options = ResourceLoadingOptions()
+	var remaining: [String] = []
+
+	while !arguments.isEmpty {
+		let argument = arguments.removeFirst()
+		let rawTimeout: String?
+
+		switch argument {
+		case "--wait-resources", "--wait-for-resources":
+			options.waitForResources = true
+			continue
+
+		case "--resource-timeout", "--resources-timeout":
+			rawTimeout = try arguments.popFirst("missing value after \(argument)")
+
+		case let option where option.hasPrefix("--resource-timeout="):
+			rawTimeout = String(option.dropFirst("--resource-timeout=".count))
+
+		case let option where option.hasPrefix("--resources-timeout="):
+			rawTimeout = String(option.dropFirst("--resources-timeout=".count))
+
+		default:
+			remaining.append(argument)
+			continue
+		}
+
+		let timeout = try ResourceLoading.parseTimeout(rawTimeout ?? "")
+		options.timeout = timeout
+		options.waitForResources = true
+	}
+
+	arguments = remaining
+	return options
+}
+
+private func parseScreenshotCaptureDelayOption(_ arguments: inout [String]) throws -> TimeInterval? {
+	var delay: TimeInterval?
+	var remaining: [String] = []
+
+	while !arguments.isEmpty {
+		let argument = arguments.removeFirst()
+		let rawDelay: String?
+
+		switch argument {
+		case "--capture-delay", "--screenshot-delay":
+			rawDelay = try arguments.popFirst("missing value after \(argument)")
+
+		case let option where option.hasPrefix("--capture-delay="):
+			rawDelay = String(option.dropFirst("--capture-delay=".count))
+
+		case let option where option.hasPrefix("--screenshot-delay="):
+			rawDelay = String(option.dropFirst("--screenshot-delay=".count))
+
+		default:
+			remaining.append(argument)
+			continue
+		}
+
+		delay = try ScreenshotCapture.parseDelay(rawDelay ?? "")
+	}
+
+	arguments = remaining
+	return delay
 }
 
 private func parseIdleTimeoutOption(_ arguments: inout [String]) throws -> TimeInterval? {

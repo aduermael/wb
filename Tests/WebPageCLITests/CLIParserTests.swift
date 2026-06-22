@@ -50,9 +50,51 @@ struct CLIParserTests {
 		XCTAssertEqual(existingBrowser.request?.browser, "deadbeef")
 		XCTAssertEqual(existingBrowser.request?.url, "https://example.com")
 
+		let waitForResources = try CLIParser.parse([
+			"--wait-resources",
+			"deadbeef",
+			"https://example.com",
+			"--resource-timeout=2.5",
+		])
+		XCTAssertEqual(waitForResources.request?.browser, "deadbeef")
+		XCTAssertEqual(waitForResources.request?.waitForResources, true)
+		XCTAssertEqual(waitForResources.request?.resourceTimeout, 2.5)
+
+		let timeoutOnly = try CLIParser.parse([
+			"example.com",
+			"--resource-timeout",
+			"1.25",
+		])
+		XCTAssertEqual(timeoutOnly.request?.waitForResources, true)
+		XCTAssertEqual(timeoutOnly.request?.resourceTimeout, 1.25)
+
+		let maxTimeout = try CLIParser.parse([
+			"example.com",
+			"--resource-timeout",
+			String(Int(ResourceLoading.maxTimeout)),
+		])
+		XCTAssertEqual(maxTimeout.request?.waitForResources, true)
+		XCTAssertEqual(maxTimeout.request?.resourceTimeout, ResourceLoading.maxTimeout)
+
 		assertThrowsMessage(
 			try CLIParser.parse(["not-an-id", "https://example.com"]), "unknown command not-an-id")
 		assertThrowsMessage(try CLIParser.parse(["--bad"]), "unknown command --bad")
+		assertThrowsMessage(
+			try CLIParser.parse(["example.com", "--resource-timeout", "nope"]),
+			"invalid resource timeout nope"
+		)
+		assertThrowsMessage(
+			try CLIParser.parse(["example.com", "--resource-timeout", "-1"]),
+			"invalid resource timeout -1"
+		)
+		assertThrowsMessage(
+			try CLIParser.parse([
+				"example.com",
+				"--resource-timeout",
+				String(Int(ResourceLoading.maxTimeout) + 1),
+			]),
+			"exceeds maximum 100"
+		)
 	}
 
 	func testPageOptionsCanAppearBeforeBrowserId() throws {
@@ -72,6 +114,17 @@ struct CLIParserTests {
 		XCTAssertTrue(options.includeActionDetails)
 		XCTAssertTrue(options.includeActionSelectors)
 		XCTAssertEqual(options.fields, [.title, .url, .actions])
+
+		let legacyAliases = try CLIParser.parse([
+			"page",
+			"--fields",
+			"images,imageCount",
+			"deadbeef",
+		])
+		guard case .page(let legacyOptions) = legacyAliases.renderMode else {
+			return XCTFail("expected page rendering")
+		}
+		XCTAssertEqual(legacyOptions.fields, [.resources, .resourceCount])
 	}
 
 	func testClickFillSubmitAndEvalCommands() throws {
@@ -121,14 +174,55 @@ struct CLIParserTests {
 	}
 
 	func testScreenshotAndDaemonCommands() throws {
-		let screenshot = try CLIParser.parse(["screenshot", "deadbeef", "shot.PNG"])
+		let bareScreenshot = try CLIParser.parse([
+			"screenshot",
+			"deadbeef",
+			"shot.png",
+		])
+		XCTAssertEqual(bareScreenshot.request?.command, .screenshot)
+		XCTAssertEqual(bareScreenshot.request?.browser, "deadbeef")
+		XCTAssertTrue(bareScreenshot.request?.destinationPath?.hasSuffix("/shot.png") == true)
+		XCTAssertEqual(bareScreenshot.request?.waitForResources, true)
+		XCTAssertNil(bareScreenshot.request?.resourceTimeout)
+		XCTAssertNil(bareScreenshot.request?.screenshotDelay)
+
+		let screenshot = try CLIParser.parse([
+			"screenshot",
+			"deadbeef",
+			"shot.PNG",
+			"--resource-timeout",
+			"4",
+			"--capture-delay",
+			"0.25",
+		])
 		XCTAssertEqual(screenshot.request?.command, .screenshot)
 		XCTAssertEqual(screenshot.request?.browser, "deadbeef")
 		XCTAssertTrue(screenshot.request?.destinationPath?.hasSuffix("/shot.PNG") == true)
+		XCTAssertEqual(screenshot.request?.waitForResources, true)
+		XCTAssertEqual(screenshot.request?.resourceTimeout, 4)
+		XCTAssertEqual(screenshot.request?.screenshotDelay, 0.25)
 
 		assertThrowsMessage(
 			try CLIParser.parse(["screenshot", "deadbeef", "shot.gif"]),
 			"screenshot destination must end in .png, .jpg, or .jpeg"
+		)
+		assertThrowsMessage(
+			try CLIParser.parse(["screenshot", "deadbeef", "shot.png", "--capture-delay", "nope"]),
+			"invalid screenshot capture delay nope"
+		)
+		assertThrowsMessage(
+			try CLIParser.parse(["screenshot", "deadbeef", "shot.png", "--capture-delay", "-1"]),
+			"invalid screenshot capture delay -1"
+		)
+		assertThrowsMessage(
+			try CLIParser.parse([
+				"screenshot",
+				"deadbeef",
+				"shot.png",
+				"--capture-delay",
+				String(Int(ScreenshotCapture.maxDelay) + 1),
+			]),
+			"exceeds maximum 10"
 		)
 
 		let daemonStart = try CLIParser.parse(["daemon", "start", "--idle-timeout=0.25"])

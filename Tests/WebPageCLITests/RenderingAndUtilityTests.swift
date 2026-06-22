@@ -59,6 +59,32 @@ struct RenderingAndUtilityTests {
 		XCTAssertEqual(rendered, "{\"ok\":false,\"progress\":1.0}")
 	}
 
+	func testScreenshotRenderSettlingMillisecondsRoundUp() throws {
+		XCTAssertEqual(ScreenshotRenderSettling.milliseconds(0), 0)
+		XCTAssertEqual(ScreenshotRenderSettling.milliseconds(0.001), 1)
+		XCTAssertEqual(ScreenshotRenderSettling.milliseconds(0.3501), 351)
+		XCTAssertEqual(
+			ScreenshotRenderSettling.fontTimeoutMilliseconds,
+			ScreenshotRenderSettling.milliseconds(ScreenshotRenderSettling.fontTimeout)
+		)
+	}
+
+	func testScreenshotRenderSettlingTotalWaitBudget() throws {
+		let zeroResourceTimeout = ScreenshotRenderSettling.totalWaitTimeout(
+			resourceTimeout: 0,
+			captureDelay: 0.3
+		)
+		XCTAssertTrue(abs(zeroResourceTimeout - 3.8) < 0.0001)
+		XCTAssertEqual(
+			ScreenshotRenderSettling.totalWaitTimeout(
+				resourceTimeout: ResourceLoading.maxTimeout,
+				captureDelay: ScreenshotCapture.maxDelay
+			),
+			ScreenshotRenderSettling.maxTotalWaitTimeout
+		)
+		XCTAssertTrue(ScreenshotRenderSettling.maxTotalWaitTimeout < DaemonTiming.commandResponseTimeout)
+	}
+
 	func testRenderedOutputForSummaryPageAndActions() throws {
 		let response = WireResponse.success()
 			.withBrowser("deadbeef")
@@ -66,23 +92,45 @@ struct RenderingAndUtilityTests {
 			.withPage(makePageSnapshot())
 
 		let summary = try renderedOutput(response, mode: .pageSummary)
+		let summaryJSON = try jsonDictionary(summary)
 		XCTAssertTrue(summary?.contains("\"actions\":2") == true)
 		XCTAssertTrue(summary?.contains("\"browser\":\"deadbeef\"") == true)
 		XCTAssertTrue(summary?.contains("\"htmlBytes\":128") == true)
-		XCTAssertTrue(summary?.contains("\"images\":2") == true)
+		XCTAssertTrue(summary?.contains("\"resources\":3") == true)
+		XCTAssertEqual((summaryJSON["resources"] as? NSNumber)?.intValue, Optional(3))
+		XCTAssertNil(summaryJSON["images"])
+		XCTAssertNil(summaryJSON["imageCount"])
 		XCTAssertTrue(summary?.contains("\"jsonBytes\":") == true)
 		XCTAssertTrue(summary?.contains("\"message\":\"clicked More\"") == true)
 		XCTAssertTrue(summary?.contains("\"url\":\"https:\\/\\/example.com\"") == true)
+
+		let loadingSummary = try renderedOutput(
+			WireResponse.success()
+				.withBrowser("deadbeef")
+				.withPage(makePageSnapshot(loading: true, resourcesLoading: true)),
+			mode: .pageSummary
+		)
+		XCTAssertTrue(loadingSummary?.contains("\"loading\":true") == true)
+		XCTAssertTrue(loadingSummary?.contains("\"resourcesLoading\":true") == true)
 
 		let page = try renderedOutput(
 			response,
 			mode: .page(PageOutputOptions(includeActionSelectors: false, includeActionDetails: true))
 		)
+		let pageJSON = try jsonDictionary(page)
+		let resources = pageJSON["resources"] as? [[String: Any]]
 		XCTAssertTrue(page?.contains("\"id\":\"wkcli-1\"") == true)
 		XCTAssertTrue(page?.contains("\"kind\":\"link\"") == true)
 		XCTAssertTrue(page?.contains("\"kind\":\"selector\"") == true)
 		XCTAssertTrue(page?.contains("\"selector\":\"a.more\"") == true)
 		XCTAssertTrue(page?.contains("\"alt\":\"Example image\"") == true)
+		XCTAssertTrue(page?.contains("\"type\":\"image\"") == true)
+		XCTAssertTrue(page?.contains("\"type\":\"json\"") == true)
+		XCTAssertEqual(resources?.count, Optional(3))
+		XCTAssertEqual(resources?[1]["type"] as? String, Optional("image"))
+		XCTAssertEqual(resources?[2]["type"] as? String, Optional("json"))
+		XCTAssertNil(pageJSON["images"])
+		XCTAssertNil(pageJSON["imageCount"])
 
 		let filtered = try renderedOutput(
 			response,
@@ -94,7 +142,7 @@ struct RenderingAndUtilityTests {
 		XCTAssertTrue(filtered?.contains("\"href\":\"https:\\/\\/example.com\\/more\"") == true)
 		XCTAssertTrue(filtered?.contains("\"kind\":\"selector\"") == true)
 		XCTAssertTrue(filtered?.contains("\"url\":") == false)
-		XCTAssertTrue(filtered?.contains("\"images\":") == false)
+		XCTAssertTrue(filtered?.contains("\"resources\":") == false)
 	}
 
 	func testRenderedOutputForSimpleModesAndErrors() throws {
@@ -114,4 +162,11 @@ struct RenderingAndUtilityTests {
 		XCTAssertTrue(renderedError?.contains("\"error\":\"navigation failed\"") == true)
 		XCTAssertTrue(renderedError?.contains("\"browser\":\"deadbeef\"") == true)
 	}
+}
+
+private func jsonDictionary(_ rendered: String?) throws -> [String: Any] {
+	let data = try rendered.unwrap("missing rendered output").data(using: .utf8)
+		.unwrap("rendered output was not UTF-8")
+	let object = try JSONSerialization.jsonObject(with: data)
+	return try (object as? [String: Any]).unwrap("rendered output was not a JSON object")
 }

@@ -1,6 +1,6 @@
 ---
 name: wb-browser
-description: Use the installed wb CLI to browse web pages, inspect compact page JSON, click/fill/submit actions, use viewport coordinates, scroll, take screenshots, and extract structured data efficiently without loading full pages.
+description: Use the installed wb CLI to browse web pages, inspect compact page JSON, click/fill/submit actions, use viewport coordinates, scroll, take screenshots, and extract structured data efficiently without returning full page snapshots.
 ---
 
 # wb Browser Automation
@@ -9,8 +9,8 @@ description: Use the installed wb CLI to browse web pages, inspect compact page 
 
 - Use the installed `wb` command directly.
 - Browsers persist between commands. Reuse the returned browser ID until the task is done, then close it when appropriate.
-- Start with compact commands. `wb <url>` and interaction commands return summaries with `browser`, `title`, `url`, `progress`, `actions`, `images`, `htmlBytes`, and `jsonBytes`.
-- Use `wb page <id>` only when you need visible text, action details, or image URLs.
+- Start with compact commands. `wb <url>` and interaction commands return summaries with `browser`, `title`, `url`, `progress`, `actions`, `resources`, `htmlBytes`, and `jsonBytes`.
+- Use `wb page <id>` only when you need visible text, action details, or loaded resource URLs.
 - After any navigation, click, fill, submit, scroll, or rerender, refresh with `wb page <id>` before reusing action numbers.
 
 ## Basic Workflow
@@ -40,12 +40,12 @@ After the user completes the handoff, continue with the same browser ID and refr
 
 - `wb create`: create an empty browser and print its ID.
 - `wb env`: print public metadata for the current `.wb` environment.
-- `wb <url>`: create a browser, load the page, and print a compact summary.
-- `wb <id> <url>`: load a page in an existing browser.
+- `wb <url> [--wait-resources] [--resource-timeout <seconds>]`: create a browser, load the page, and print a compact summary. `--resource-timeout` implies `--wait-resources`; max 100 seconds.
+- `wb <id> <url> [--wait-resources] [--resource-timeout <seconds>]`: load a page in an existing browser. `--resource-timeout` implies `--wait-resources`; max 100 seconds.
 - `wb list`: list active and saved browsers as compact JSON.
 - `wb close <id>`: close the browser and delete any saved session for that ID.
 - `wb show <id>` / `wb hide <id>`: show or hide a lightweight browser window.
-- `wb screenshot <id> <path.png|path.jpg>`: capture the current viewport.
+- `wb screenshot <id> <path.png|path.jpg> [--resource-timeout <seconds>] [--capture-delay <seconds>]`: wait for resources, pause briefly for visual settling, then capture the current viewport. `--resource-timeout` is capped at 100 seconds; `--capture-delay` defaults to 0.3 seconds and accepts 0 to disable.
 - `wb page <id> [--fields <list>] [--selectors|--action-details]`: print page JSON.
 - `wb click <id> <action>`: click a page action by 1-based index or action ID.
 - `wb click <id> <x> <y>`: click viewport coordinates.
@@ -58,6 +58,8 @@ After the user completes the handoff, continue with the same browser ID and refr
 
 Run `wb <command> --help` when command syntax is uncertain.
 
+URL opens return when the page HTML is ready. Add `--wait-resources` when the task depends on loaded images, scripts, styles, JSON, or fetch results. `--resource-timeout` implies that wait for opens and is capped at 100 seconds. Screenshots wait for resources by default, then use a 0.3 second capture delay for visual settling.
+
 ## Page JSON
 
 `wb` emits compact one-line JSON. Fields with default values are omitted; treat omitted fields as defaults when filtering.
@@ -65,15 +67,17 @@ Run `wb <command> --help` when command syntax is uncertain.
 Top-level `wb page` fields are:
 
 ```text
-actions,browser,htmlBytes,imageCount,images,jsonBytes,loading,progress,text,title,url
+actions,browser,htmlBytes,jsonBytes,loading,progress,resourceCount,resources,resourcesLoading,text,title,url
 ```
+
+The returned `resources` array is capped at 250 entries. Use `resourceCount` for the total discovered resource count.
 
 Use `--fields` to request only what is needed:
 
 ```bash
 wb page "$id" --fields title,url,jsonBytes
 wb page "$id" --fields actions
-wb page "$id" --fields title,url,images
+wb page "$id" --fields title,url,resources
 ```
 
 Default actions include `index`, `kind`, `text`, optional `href`, and optional `disabled`. Use `--selectors` only when CSS selectors are needed. Use `--action-details` only when internal action IDs, tags, types, and selectors are needed.
@@ -83,7 +87,7 @@ Default actions include `index`, `kind`, `text`, optional `href`, and optional `
 - Filter at the source with `--fields` before using `jq`.
 - Avoid pretty-printing or storing full page JSON in shell variables. Pipe directly from `wb` to `jq`.
 - Prefer compact row output with `jq -c` and raw scalar output with `jq -r`.
-- Use known structure when filtering: actions are in `.actions[]`; images are in `.images[]`; visible text is in `.text`.
+- Use known structure when filtering: actions are in `.actions[]`; resources are in `.resources[]`; visible text is in `.text`.
 - Because omitted values are common, use defaults such as `(.disabled // false)`, `(.href // "")`, and `(.text // "")`.
 - Use `jsonBytes` to decide whether a fuller snapshot is safe to request.
 
@@ -99,7 +103,7 @@ idx=$(
 )
 ```
 
-List compact links without loading page text or images:
+List compact links without returning page text or resources:
 
 ```bash
 wb page "$id" --fields actions |
@@ -108,18 +112,18 @@ wb page "$id" --fields actions |
     | {index, text: (.text // ""), href: (.href // "")}'
 ```
 
-Extract image URLs only:
+Extract image resource URLs only:
 
 ```bash
-wb page "$id" --fields images |
-  jq -r '.images[]?.url'
+wb page "$id" --fields resources |
+  jq -r '.resources[]? | select(.type == "image") | .url'
 ```
 
 When output is still too large after `--fields`, use streaming filters that match path shape instead of materializing the whole document:
 
 ```bash
-wb page "$id" --fields images |
-  jq --stream -r 'select(.[0][0] == "images" and .[0][2] == "url") | .[1]'
+wb page "$id" --fields resources |
+  jq --stream -r 'select(.[0][0] == "resources" and .[0][2] == "url") | .[1]'
 ```
 
 ## Targeted Extraction With JavaScript

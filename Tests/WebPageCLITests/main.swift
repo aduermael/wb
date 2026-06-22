@@ -44,14 +44,26 @@ TestHarness.run("PageFieldAndProtocolTests.testPageFieldListParsingTrimsAndDedup
 TestHarness.run("PageFieldAndProtocolTests.testWireRequestBuilderAndRequiredValues") {
 	try pageFieldAndProtocolTests.testWireRequestBuilderAndRequiredValues()
 }
+TestHarness.run("PageFieldAndProtocolTests.testResourceTimeoutValidationAndWaitSemantics") {
+	try pageFieldAndProtocolTests.testResourceTimeoutValidationAndWaitSemantics()
+}
+TestHarness.run("PageFieldAndProtocolTests.testResourceLoadingValidationRejectsUnsupportedCommands") {
+	try pageFieldAndProtocolTests.testResourceLoadingValidationRejectsUnsupportedCommands()
+}
+TestHarness.run("PageFieldAndProtocolTests.testPageLoadStatusTracksPageResourceAndQuietStates") {
+	try pageFieldAndProtocolTests.testPageLoadStatusTracksPageResourceAndQuietStates()
+}
+TestHarness.run("PageFieldAndProtocolTests.testPageLoadStatusInteractionSettlingUsesShortQuietCriteria") {
+	try pageFieldAndProtocolTests.testPageLoadStatusInteractionSettlingUsesShortQuietCriteria()
+}
 TestHarness.run("PageFieldAndProtocolTests.testWireResponsesPreserveProtocolVersionAndBuilderFields") {
 	try pageFieldAndProtocolTests.testWireResponsesPreserveProtocolVersionAndBuilderFields()
 }
 TestHarness.run("PageFieldAndProtocolTests.testWireCodecRoundTripsResponsesAndErrors") {
 	try pageFieldAndProtocolTests.testWireCodecRoundTripsResponsesAndErrors()
 }
-TestHarness.run("PageFieldAndProtocolTests.testPageSnapshotDecodesCurrentAndLegacyImagePayloads") {
-	try pageFieldAndProtocolTests.testPageSnapshotDecodesCurrentAndLegacyImagePayloads()
+TestHarness.run("PageFieldAndProtocolTests.testPageSnapshotDecodesCurrentResourcesAndLegacyImagePayloads") {
+	try pageFieldAndProtocolTests.testPageSnapshotDecodesCurrentResourcesAndLegacyImagePayloads()
 }
 
 let renderingAndUtilityTests = RenderingAndUtilityTests()
@@ -66,6 +78,12 @@ TestHarness.run("RenderingAndUtilityTests.testPrintableHandlesCommonJavaScriptBr
 }
 TestHarness.run("RenderingAndUtilityTests.testCompactJSONStringSortsKeysAndPrunesDefaults") {
 	try renderingAndUtilityTests.testCompactJSONStringSortsKeysAndPrunesDefaults()
+}
+TestHarness.run("RenderingAndUtilityTests.testScreenshotRenderSettlingMillisecondsRoundUp") {
+	try renderingAndUtilityTests.testScreenshotRenderSettlingMillisecondsRoundUp()
+}
+TestHarness.run("RenderingAndUtilityTests.testScreenshotRenderSettlingTotalWaitBudget") {
+	try renderingAndUtilityTests.testScreenshotRenderSettlingTotalWaitBudget()
 }
 TestHarness.run("RenderingAndUtilityTests.testRenderedOutputForSummaryPageAndActions") {
 	try renderingAndUtilityTests.testRenderedOutputForSummaryPageAndActions()

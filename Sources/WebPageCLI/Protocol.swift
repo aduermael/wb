@@ -4,7 +4,69 @@
 import Foundation
 
 enum WireProtocol {
-	static let version = 29
+	static let version = 32
+}
+
+enum DaemonTiming {
+	static let commandResponseTimeout: TimeInterval = 120
+}
+
+enum ResourceLoading {
+	static let defaultTimeout: TimeInterval = 8
+	static let quietWindow: TimeInterval = 0.35
+	static let responseTimeoutHeadroom: TimeInterval = 20
+	static let maxTimeout = DaemonTiming.commandResponseTimeout - responseTimeoutHeadroom
+
+	static func parseTimeout(_ rawValue: String) throws -> TimeInterval {
+		guard let timeout = TimeInterval(rawValue) else {
+			throw WBError.message("invalid resource timeout \(rawValue)")
+		}
+		return try validateTimeout(timeout, rawValue: rawValue)
+	}
+
+	static func validateTimeout(_ timeout: TimeInterval, rawValue: String? = nil) throws -> TimeInterval {
+		let renderedValue = rawValue ?? String(timeout)
+		guard timeout.isFinite && timeout >= 0 else {
+			throw WBError.message("invalid resource timeout \(renderedValue)")
+		}
+		guard timeout <= maxTimeout else {
+			throw WBError.message(
+				"resource timeout \(renderedValue) exceeds maximum \(Int(maxTimeout))"
+			)
+		}
+		return timeout
+	}
+}
+
+enum InteractionSettling {
+	static let defaultTimeout: TimeInterval = 2
+	static let quietWindow: TimeInterval = 0.5
+	static let pollIntervalNanoseconds: UInt64 = 75_000_000
+}
+
+enum ScreenshotCapture {
+	static let defaultDelay: TimeInterval = 0.3
+	static let maxDelay: TimeInterval = 10
+
+	static func parseDelay(_ rawValue: String) throws -> TimeInterval {
+		guard let delay = TimeInterval(rawValue) else {
+			throw WBError.message("invalid screenshot capture delay \(rawValue)")
+		}
+		return try validateDelay(delay, rawValue: rawValue)
+	}
+
+	static func validateDelay(_ delay: TimeInterval, rawValue: String? = nil) throws -> TimeInterval {
+		let renderedValue = rawValue ?? String(delay)
+		guard delay.isFinite && delay >= 0 else {
+			throw WBError.message("invalid screenshot capture delay \(renderedValue)")
+		}
+		guard delay <= maxDelay else {
+			throw WBError.message(
+				"screenshot capture delay \(renderedValue) exceeds maximum \(Int(maxDelay))"
+			)
+		}
+		return delay
+	}
 }
 
 enum WireCommand: String, Codable, Equatable, Sendable {
@@ -40,6 +102,9 @@ struct WireRequest: Codable, Sendable {
 	var y: Double? = nil
 	var deltaX: Double? = nil
 	var deltaY: Double? = nil
+	var waitForResources: Bool? = nil
+	var resourceTimeout: TimeInterval? = nil
+	var screenshotDelay: TimeInterval? = nil
 
 	init(command: WireCommand) {
 		self.command = command
@@ -90,6 +155,19 @@ struct WireRequest: Codable, Sendable {
 		request.y = point.y
 		request.deltaX = delta?.x
 		request.deltaY = delta?.y
+		return request
+	}
+
+	func withResourceLoading(waitForResources: Bool, timeout: TimeInterval?) -> WireRequest {
+		var request = self
+		request.waitForResources = waitForResources ? true : nil
+		request.resourceTimeout = timeout
+		return request
+	}
+
+	func withScreenshotDelay(_ delay: TimeInterval?) -> WireRequest {
+		var request = self
+		request.screenshotDelay = delay
 		return request
 	}
 
@@ -146,6 +224,38 @@ struct WireRequest: Codable, Sendable {
 
 	func requiredDeltaY() throws -> Double {
 		try deltaY.unwrap("missing y scroll delta")
+	}
+
+	func waitsForResources(implicit: Bool = false) -> Bool {
+		implicit || waitForResources == true || resourceTimeout != nil
+	}
+
+	func resourceWaitTimeout(default defaultTimeout: TimeInterval) throws -> TimeInterval {
+		try ResourceLoading.validateTimeout(resourceTimeout ?? defaultTimeout)
+	}
+
+	func screenshotCaptureDelay(default defaultDelay: TimeInterval) throws -> TimeInterval {
+		try ScreenshotCapture.validateDelay(screenshotDelay ?? defaultDelay)
+	}
+
+	func validateResourceLoading() throws {
+		let requestsResourceLoading = waitForResources == true || resourceTimeout != nil
+		if requestsResourceLoading && command != .open && command != .screenshot {
+			throw WBError.message(
+				"resource loading options are only supported for open and screenshot commands"
+			)
+		}
+		if let resourceTimeout {
+			_ = try ResourceLoading.validateTimeout(resourceTimeout)
+		}
+		if screenshotDelay != nil && command != .screenshot {
+			throw WBError.message(
+				"screenshot capture delay is only supported for screenshot commands"
+			)
+		}
+		if let screenshotDelay {
+			_ = try ScreenshotCapture.validateDelay(screenshotDelay)
+		}
 	}
 }
 
@@ -263,9 +373,10 @@ struct PageSnapshot: Codable, Sendable {
 	let title: String
 	let url: String?
 	let loading: Bool
+	let resourcesLoading: Bool
 	let progress: Double
-	let imageCount: Int?
-	let images: [BrowserImage]
+	let resourceCount: Int?
+	let resources: [BrowserResource]
 	let htmlBytes: Int?
 	let text: String?
 	let actions: [BrowserAction]
@@ -275,9 +386,10 @@ struct PageSnapshot: Codable, Sendable {
 		title = state.title
 		url = state.url
 		loading = state.loading
+		resourcesLoading = state.resourcesLoading
 		progress = state.progress
-		imageCount = content.imageCount
-		images = content.images
+		resourceCount = content.resourceCount
+		resources = content.resources
 		htmlBytes = content.htmlBytes
 		text = content.text
 		actions = content.actions
@@ -290,18 +402,32 @@ struct PageSnapshot: Codable, Sendable {
 		title = try container.decode(String.self, forKey: .title)
 		url = try container.decodeIfPresent(String.self, forKey: .url)
 		loading = try container.decode(Bool.self, forKey: .loading)
+		resourcesLoading =
+			try container.decodeIfPresent(Bool.self, forKey: .resourcesLoading) ?? false
 		progress = try container.decode(Double.self, forKey: .progress)
 		htmlBytes = try container.decodeIfPresent(Int.self, forKey: .htmlBytes)
 		text = try container.decodeIfPresent(String.self, forKey: .text)
 		actions = try container.decode([BrowserAction].self, forKey: .actions)
 
-		if let decodedImages = try? container.decode([BrowserImage].self, forKey: .images) {
-			images = decodedImages
-			imageCount = try container.decodeIfPresent(Int.self, forKey: .imageCount) ?? decodedImages.count
+		if container.contains(.resources) {
+			let decodedResources = try container.decode([BrowserResource].self, forKey: .resources)
+			resources = decodedResources
+			resourceCount =
+				try container.decodeIfPresent(Int.self, forKey: .resourceCount)
+				?? decodedResources.count
+		} else if let decodedImages = try? container.decode([BrowserImage].self, forKey: .images) {
+			resources = decodedImages.map(\.resource)
+			resourceCount =
+				try container.decodeIfPresent(Int.self, forKey: .resourceCount)
+				?? container.decodeIfPresent(Int.self, forKey: .imageCount)
+				?? decodedImages.count
 		} else {
 			let legacyImageCount = try container.decodeIfPresent(Int.self, forKey: .images)
-			images = []
-			imageCount = try container.decodeIfPresent(Int.self, forKey: .imageCount) ?? legacyImageCount
+			resources = []
+			resourceCount =
+				try container.decodeIfPresent(Int.self, forKey: .resourceCount)
+				?? container.decodeIfPresent(Int.self, forKey: .imageCount)
+				?? legacyImageCount
 		}
 	}
 
@@ -312,9 +438,10 @@ struct PageSnapshot: Codable, Sendable {
 		try container.encode(title, forKey: .title)
 		try container.encodeIfPresent(url, forKey: .url)
 		try container.encode(loading, forKey: .loading)
+		try container.encode(resourcesLoading, forKey: .resourcesLoading)
 		try container.encode(progress, forKey: .progress)
-		try container.encodeIfPresent(imageCount, forKey: .imageCount)
-		try container.encode(images, forKey: .images)
+		try container.encodeIfPresent(resourceCount, forKey: .resourceCount)
+		try container.encode(resources, forKey: .resources)
 		try container.encodeIfPresent(htmlBytes, forKey: .htmlBytes)
 		try container.encodeIfPresent(text, forKey: .text)
 		try container.encode(actions, forKey: .actions)
@@ -324,6 +451,9 @@ struct PageSnapshot: Codable, Sendable {
 		case actions
 		case browser
 		case htmlBytes
+		case resourceCount
+		case resources
+		case resourcesLoading
 		case imageCount
 		case images
 		case loading
@@ -338,21 +468,107 @@ struct PageSnapshotState: Sendable {
 	let title: String
 	let url: String?
 	let loading: Bool
+	let resourcesLoading: Bool
 	let progress: Double
 }
 
 struct PageSnapshotContent: Sendable {
-	let imageCount: Int?
-	let images: [BrowserImage]
+	let resourceCount: Int?
+	let resources: [BrowserResource]
 	let htmlBytes: Int?
 	let text: String?
 	let actions: [BrowserAction]
+}
+
+struct PageLoadStatus: Decodable, Sendable {
+	let readyState: String
+	let pendingRequests: Int
+	let pendingResources: Int
+	let quietFor: TimeInterval
+
+	init(
+		readyState: String,
+		pendingRequests: Int = 0,
+		quietFor: TimeInterval = ResourceLoading.quietWindow
+	) {
+		self.readyState = readyState
+		self.pendingRequests = max(0, pendingRequests)
+		self.pendingResources = 0
+		self.quietFor = max(0, quietFor)
+	}
+
+	init(from decoder: Decoder) throws {
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+		readyState = try container.decode(String.self, forKey: .readyState)
+		pendingRequests = max(
+			0,
+			try container.decodeIfPresent(Int.self, forKey: .pendingRequests) ?? 0
+		)
+		pendingResources = max(
+			0,
+			try container.decodeIfPresent(Int.self, forKey: .pendingResources) ?? 0
+		)
+		quietFor = max(
+			0,
+			try container.decodeIfPresent(TimeInterval.self, forKey: .quietFor)
+				?? ResourceLoading.quietWindow
+		)
+	}
+
+	var pageLoading: Bool {
+		readyState != "interactive" && readyState != "complete"
+	}
+
+	var pendingWork: Int {
+		pendingRequests + pendingResources
+	}
+
+	func resourcesLoading(
+		webKitLoading: Bool,
+		quietWindow: TimeInterval = ResourceLoading.quietWindow
+	) -> Bool {
+		pageLoading
+			|| readyState != "complete"
+			|| webKitLoading
+			|| pendingWork > 0
+			|| quietFor < quietWindow
+	}
+
+	func interactionSettled(
+		webKitLoading: Bool,
+		quietWindow: TimeInterval = InteractionSettling.quietWindow
+	) -> Bool {
+		!pageLoading
+			&& !webKitLoading
+			&& pendingWork == 0
+			&& quietFor >= quietWindow
+	}
+
+	private enum CodingKeys: String, CodingKey {
+		case pendingRequests
+		case pendingResources
+		case quietFor
+		case readyState
+	}
+}
+
+struct BrowserResource: Codable, Sendable {
+	let index: Int
+	let type: String
+	let url: String
+	let alt: String?
 }
 
 struct BrowserImage: Codable, Sendable {
 	let index: Int
 	let url: String
 	let alt: String?
+}
+
+private extension BrowserImage {
+	var resource: BrowserResource {
+		BrowserResource(index: index, type: "image", url: url, alt: alt)
+	}
 }
 
 struct BrowserAction: Codable, Sendable {

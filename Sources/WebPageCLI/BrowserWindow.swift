@@ -240,15 +240,28 @@ private final class BrowserPanel: NSPanel {
 
 @available(macOS 26.0, *)
 @MainActor
+struct BrowserWindowNavigationCallbacks {
+	let started: () -> Int
+	let completed: (Int) -> Void
+}
+
+@available(macOS 26.0, *)
+@MainActor
 final class BrowserWindowController: NSObject, NSWindowDelegate {
 	private let browserID: String
 	private let page: WebPage
+	private let navigationCallbacks: BrowserWindowNavigationCallbacks
 	private var window: NSWindow?
 	private var isHiddenByCommand = false
 
-	init(browserID: String, page: WebPage) {
+	init(
+		browserID: String,
+		page: WebPage,
+		navigationCallbacks: BrowserWindowNavigationCallbacks
+	) {
 		self.browserID = browserID
 		self.page = page
+		self.navigationCallbacks = navigationCallbacks
 	}
 
 	var isVisible: Bool {
@@ -256,6 +269,17 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
 			return false
 		}
 		return window.isVisible || window.isMiniaturized
+	}
+
+	var isVisibleForScreenshotCapture: Bool {
+		guard let window else {
+			return false
+		}
+		return window.isVisible || window.isMiniaturized
+	}
+
+	var hasAttachedWindowForScreenshotCapture: Bool {
+		window != nil && !isHiddenByCommand
 	}
 
 	var keepsDaemonAlive: Bool {
@@ -286,6 +310,19 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
 		daemonLog("window hide requested browser=\(browserID)")
 		isHiddenByCommand = true
 		window?.orderOut(nil)
+		BrowserApplicationHost.demoteIfNoVisibleWindows()
+	}
+
+	func detachHiddenWindowForScreenshotRenderHost() {
+		guard let window, isHiddenByCommand, !window.isVisible, !window.isMiniaturized else {
+			return
+		}
+		daemonLog("window detach hidden preview for screenshot browser=\(browserID)")
+		isHiddenByCommand = true
+		window.delegate = nil
+		window.contentViewController = nil
+		window.close()
+		self.window = nil
 		BrowserApplicationHost.demoteIfNoVisibleWindows()
 	}
 
@@ -336,7 +373,10 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
 		window.tabbingMode = .disallowed
 		window.delegate = self
 		window.contentViewController = NSHostingController(
-			rootView: BrowserWindowView(page: page)
+			rootView: BrowserWindowView(
+				page: page,
+				navigationCallbacks: navigationCallbacks
+			)
 		)
 		positionWindow(window)
 		self.window = window
@@ -387,6 +427,7 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
 @MainActor
 private struct BrowserWindowView: View {
 	let page: WebPage
+	let navigationCallbacks: BrowserWindowNavigationCallbacks
 
 	@State private var address = ""
 
@@ -453,7 +494,11 @@ private struct BrowserWindowView: View {
 			return
 		}
 
+		let generation = navigationCallbacks.started()
 		Task { @MainActor in
+			defer {
+				navigationCallbacks.completed(generation)
+			}
 			do {
 				for try await _ in page.load(item) {}
 			} catch {}
@@ -465,7 +510,11 @@ private struct BrowserWindowView: View {
 			return
 		}
 
+		let generation = navigationCallbacks.started()
 		Task { @MainActor in
+			defer {
+				navigationCallbacks.completed(generation)
+			}
 			do {
 				for try await _ in page.load(item) {}
 			} catch {}
@@ -473,7 +522,11 @@ private struct BrowserWindowView: View {
 	}
 
 	private func reload() {
+		let generation = navigationCallbacks.started()
 		Task { @MainActor in
+			defer {
+				navigationCallbacks.completed(generation)
+			}
 			do {
 				for try await _ in page.reload(fromOrigin: false) {}
 			} catch {}
@@ -495,7 +548,11 @@ private struct BrowserWindowView: View {
 		var request = URLRequest(url: url)
 		request.attribution = .user
 
+		let generation = navigationCallbacks.started()
 		Task { @MainActor in
+			defer {
+				navigationCallbacks.completed(generation)
+			}
 			do {
 				for try await _ in page.load(request) {}
 			} catch {}

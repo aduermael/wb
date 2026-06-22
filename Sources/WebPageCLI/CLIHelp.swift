@@ -11,7 +11,7 @@ func printHelp(_ topic: HelpTopic) {
 			wb is a browser CLI for headless, persistent, and scriptable web sessions.
 
 			Usage:
-			  wb [<id>] <url>
+			  wb [<id>] <url> [--wait-resources] [--resource-timeout <seconds>]
 			  wb env
 			  wb update
 			  wb version
@@ -20,7 +20,8 @@ func printHelp(_ topic: HelpTopic) {
 			  wb close <id>
 			  wb show <id>
 			  wb hide <id>
-			  wb screenshot <id> <destination.png|destination.jpg>
+			  wb screenshot <id> <destination.png|destination.jpg> [--resource-timeout <seconds>]
+			    [--capture-delay <seconds>]
 
 			  wb page <id> [--fields <list>] [--selectors|--action-details]
 			  wb click <id> <action>
@@ -42,6 +43,9 @@ func printHelp(_ topic: HelpTopic) {
 			Notes:
 			  - Browsers persist between commands; use wb list to see saved IDs.
 			  - JSON output is compact; fields with default values are omitted.
+			  - URL opens return after page HTML is ready; use --wait-resources
+			    or --resource-timeout to wait for scripts, styles, images, and fetches.
+			  - --resource-timeout accepts 0-\(Int(ResourceLoading.maxTimeout)) seconds.
 			  - Run 'wb <command> --help' for command details.
 			""")
 
@@ -128,10 +132,19 @@ func printHelp(_ topic: HelpTopic) {
 		print(
 			"""
 			Usage:
-			  wb screenshot <id> <destination.png|destination.jpg>
+			  wb screenshot <id> <destination.png|destination.jpg> [--resource-timeout <seconds>]
+			    [--capture-delay <seconds>]
 
-			Captures the current browser viewport and writes it to the destination path.
+			Waits for resources, pauses briefly for visual settling, captures the current browser viewport,
+			and writes it to the destination path.
 			The image format is selected from the destination extension.
+
+			Options:
+			  --resource-timeout <seconds>    Resource wait timeout; default \(Int(ResourceLoading.defaultTimeout)) seconds,
+			                                  max \(Int(ResourceLoading.maxTimeout)) seconds.
+			  --capture-delay <seconds>       Delay after resource wait before capture; default
+			                                  \(ScreenshotCapture.defaultDelay) seconds, max
+			                                  \(Int(ScreenshotCapture.maxDelay)) seconds. Use 0 to disable.
 			""")
 
 	case .page:
@@ -149,7 +162,8 @@ func printHelp(_ topic: HelpTopic) {
 
 			Notes:
 			  - Default actions include index, kind, text, href, and disabled state.
-			  - Image entries include index and URL.
+			  - Resource entries include index, type, and URL. The resources list is capped
+			    at 250 entries; resourceCount reports the total discovered resources.
 			  - Use action numbers by default; use --action-details to get action IDs.
 			""")
 

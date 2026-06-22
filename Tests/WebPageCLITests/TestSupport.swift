@@ -136,20 +136,37 @@ func XCTFail(_ message: String) {
 	TestHarness.record(message)
 }
 
-func makePageSnapshot() -> PageSnapshot {
+func makePageSnapshot(loading: Bool = false, resourcesLoading: Bool = false) -> PageSnapshot {
 	PageSnapshot(
 		browser: "deadbeef",
 		state: PageSnapshotState(
 			title: "Example",
 			url: "https://example.com",
-			loading: false,
+			loading: loading,
+			resourcesLoading: resourcesLoading,
 			progress: 1
 		),
 		content: PageSnapshotContent(
-			imageCount: 2,
-			images: [
-				BrowserImage(index: 1, url: "https://example.com/image.png", alt: "Example image"),
-				BrowserImage(index: 2, url: "https://example.com/blank.png", alt: ""),
+			resourceCount: 3,
+			resources: [
+				BrowserResource(
+					index: 1,
+					type: "style",
+					url: "https://example.com/site.css",
+					alt: nil
+				),
+				BrowserResource(
+					index: 2,
+					type: "image",
+					url: "https://example.com/image.png",
+					alt: "Example image"
+				),
+				BrowserResource(
+					index: 3,
+					type: "json",
+					url: "https://example.com/data.json",
+					alt: nil
+				),
 			],
 			htmlBytes: 128,
 			text: "Example text",

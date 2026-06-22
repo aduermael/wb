@@ -182,7 +182,7 @@ final class DaemonClient {
 		case .daemonStop:
 			return 5
 		default:
-			return 120
+			return DaemonTiming.commandResponseTimeout
 		}
 	}
 

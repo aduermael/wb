@@ -26,6 +26,7 @@ final class BrowserManager: @unchecked Sendable {
 	func handleWireData(_ data: Data) async -> Data {
 		do {
 			let request = try JSONDecoder().decode(WireRequest.self, from: data)
+			try request.validateResourceLoading()
 			daemonLog("request command=\(request.command.rawValue) browser=\(request.browser ?? "-")")
 			let response = try await handle(request)
 			daemonLog(
@@ -58,7 +59,7 @@ final class BrowserManager: @unchecked Sendable {
 		case .browserClose:
 			let id = try request.requiredBrowserID()
 			let removedBrowser = browsers.removeValue(forKey: id)
-			removedBrowser?.closeWindow()
+			removedBrowser?.close()
 			let removedActive = removedBrowser != nil
 			let removedDump = sessionStore.exists(id)
 			if removedDump {
@@ -85,22 +86,30 @@ final class BrowserManager: @unchecked Sendable {
 		case .open:
 			let url = try request.requiredURL()
 			let browserState = try browserForOpen(id: request.browser)
+			let resourceTimeout = try request.resourceWaitTimeout(default: ResourceLoading.defaultTimeout)
 			let page: PageSnapshot
 			do {
-				page = try await browserState.browser.open(url)
+				page = try await browserState.browser.open(
+					url,
+					waitForResources: request.waitsForResources(),
+					resourceTimeout: resourceTimeout
+				)
 			} catch {
 				daemonLog(
 					"open failed browser=\(browserState.browser.id) createdForOpen=\(browserState.createdForOpen) "
 						+ "error=\(error.localizedDescription)"
 				)
+				try ensureActive(browserState.browser, context: "open-failed")
 				let failedPage = await browserState.browser.bestEffortSnapshot(
 					fallbackURL: url.absoluteString)
+				try ensureActive(browserState.browser, context: "open-failed-snapshot")
 				scheduleAutosave(browserState.browser, reason: "open-failed")
 				return WireResponse.failure(error.localizedDescription)
 					.withBrowser(browserState.browser.id)
 					.withPage(failedPage)
 					.withURL(url.absoluteString)
 			}
+			try ensureActive(browserState.browser, context: "open")
 			scheduleAutosave(browserState.browser, reason: "open")
 			return WireResponse.success()
 				.withBrowser(browserState.browser.id)
@@ -109,6 +118,7 @@ final class BrowserManager: @unchecked Sendable {
 		case .page:
 			let browser = try await requireBrowser(request.browser)
 			let page = try await browser.snapshot()
+			try ensureActive(browser, context: "page")
 			return WireResponse.success()
 				.withBrowser(browser.id)
 				.withPage(page)
@@ -117,6 +127,7 @@ final class BrowserManager: @unchecked Sendable {
 			let browser = try await requireBrowser(request.browser)
 			let action = try request.requiredAction()
 			let result = try await browser.click(action)
+			try ensureActive(browser, context: "click")
 			scheduleAutosave(browser, reason: "click")
 			return WireResponse.success()
 				.withBrowser(browser.id)
@@ -128,6 +139,7 @@ final class BrowserManager: @unchecked Sendable {
 			let action = try request.requiredAction()
 			let value = try request.requiredValue()
 			let result = try await browser.fill(action, value: value)
+			try ensureActive(browser, context: "fill")
 			scheduleAutosave(browser, reason: "fill")
 			return WireResponse.success()
 				.withBrowser(browser.id)
@@ -138,6 +150,7 @@ final class BrowserManager: @unchecked Sendable {
 			let browser = try await requireBrowser(request.browser)
 			let action = try request.requiredAction()
 			let result = try await browser.submit(action)
+			try ensureActive(browser, context: "submit")
 			scheduleAutosave(browser, reason: "submit")
 			return WireResponse.success()
 				.withBrowser(browser.id)
@@ -153,6 +166,7 @@ final class BrowserManager: @unchecked Sendable {
 			} else {
 				value = try await browser.evaluateExpression(script)
 			}
+			try ensureActive(browser, context: "eval")
 			scheduleAutosave(browser, reason: "eval")
 			return WireResponse.success()
 				.withBrowser(browser.id)
@@ -161,7 +175,14 @@ final class BrowserManager: @unchecked Sendable {
 		case .screenshot:
 			let browser = try await requireBrowser(request.browser)
 			let path = try request.requiredDestinationPath()
-			let result = try await browser.screenshot(to: path)
+			let result = try await browser.screenshot(
+				to: path,
+				resourceTimeout: try request.resourceWaitTimeout(
+					default: ResourceLoading.defaultTimeout),
+				captureDelay: try request.screenshotCaptureDelay(
+					default: ScreenshotCapture.defaultDelay)
+			)
+			try ensureActive(browser, context: "screenshot")
 			return WireResponse.success()
 				.withBrowser(browser.id)
 				.withMessage("saved \(result.path)")
@@ -170,6 +191,7 @@ final class BrowserManager: @unchecked Sendable {
 			let browser = try await requireBrowser(request.browser)
 			let action = try BrowserCoordinateAction(request: request)
 			let result = try await browser.coordinateAction(action)
+			try ensureActive(browser, context: action.name)
 			scheduleAutosave(browser, reason: action.name)
 			return WireResponse.success()
 				.withBrowser(browser.id)
@@ -318,25 +340,53 @@ final class BrowserManager: @unchecked Sendable {
 	private func dump(_ browser: BrowserInstance) async throws -> BrowserDump {
 		daemonLog("dump browser id=\(browser.id)")
 		let dump = await browser.dump()
+		try ensureActive(browser, context: "dump")
 		try sessionStore.save(dump)
 		daemonLog("dump saved id=\(browser.id) url=\(dump.url ?? "-")")
 		return dump
 	}
 
 	private func scheduleAutosave(_ browser: BrowserInstance, reason: String) {
+		guard isActive(browser) else {
+			daemonLog("autosave skipped inactive id=\(browser.id) reason=\(reason)")
+			return
+		}
 		Task { @MainActor in
 			await autosave(browser, reason: reason)
 		}
 	}
 
 	private func autosave(_ browser: BrowserInstance, reason: String) async {
+		guard isActive(browser) else {
+			daemonLog("autosave skipped inactive id=\(browser.id) reason=\(reason)")
+			return
+		}
 		daemonLog("autosave start id=\(browser.id) reason=\(reason)")
 		do {
-			_ = try await dump(browser)
+			let dump = await browser.dump()
+			guard isActive(browser) else {
+				daemonLog("autosave skipped removed id=\(browser.id) reason=\(reason)")
+				return
+			}
+			try sessionStore.save(dump)
 			daemonLog("autosave complete id=\(browser.id) reason=\(reason)")
 		} catch {
 			daemonLog(
 				"autosave failed id=\(browser.id) reason=\(reason) error=\(error.localizedDescription)")
+		}
+	}
+
+	private func isActive(_ browser: BrowserInstance) -> Bool {
+		guard let active = browsers[browser.id] else {
+			return false
+		}
+		return active === browser
+	}
+
+	private func ensureActive(_ browser: BrowserInstance, context: String) throws {
+		guard isActive(browser) else {
+			daemonLog("browser inactive after \(context) id=\(browser.id)")
+			throw WBError.message("browser closed")
 		}
 	}
 
@@ -383,13 +433,16 @@ final class BrowserManager: @unchecked Sendable {
 
 		do {
 			_ = try await browser.open(url)
+			try ensureActive(browser, context: "resume")
 			scheduleAutosave(browser, reason: showingWindow ? "show-resume" : "resume")
 			daemonLog("resume loaded id=\(dump.browser) url=\(rawURL)")
 			return browser
 		} catch {
 			daemonLog("resume failed id=\(dump.browser) error=\(error.localizedDescription)")
-			browser.closeWindow()
-			browsers.removeValue(forKey: dump.browser)
+			browser.close()
+			if let active = browsers[dump.browser], active === browser {
+				browsers.removeValue(forKey: dump.browser)
+			}
 			throw error
 		}
 	}
