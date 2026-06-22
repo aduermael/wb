@@ -1,10 +1,10 @@
 /// Verifies repository lint rules through in-memory Swift snippets so rule
 /// behavior is covered without large fixture trees.
 import Foundation
-import XCTest
 @testable import WBLintCore
 
-final class LinterRuleTests: XCTestCase {
+struct LinterRuleTests {
+
 	func testRuleTitlesAndViolationSortingAreStable() {
 		XCTAssertEqual(LintRule.fileDoc.title, "File doc comments")
 		XCTAssertEqual(LintRule.parameters.sortOrder, LintRule.parameters.rawValue)
@@ -63,18 +63,20 @@ final class LinterRuleTests: XCTestCase {
 
 	func testLineRulesDetectEndingsWhitespaceLengthBlanksAndFileLength() {
 		let longLine = "\tlet longValueName = \"\(String(repeating: "x", count: 90))\"\n"
+		let lineEndingViolations = lintSource("/// Valid docs\r\n\tlet value = 1\n")
+		XCTAssertEqual(messages(for: lineEndingViolations, rule: .lineEndings), ["use LF line endings"])
+
 		let source =
-			"/// Valid docs\r\n\tlet value = 1 \n\n\n" + longLine
+			"/// Valid docs\n\tlet value = 1 \n\n\n" + longLine
 			+ "\tlet a = 1\n\tlet b = 2\n\tlet c = 3\n"
 		let violations = lintSource(source)
 
-		XCTAssertEqual(messages(for: violations, rule: .lineEndings), ["use LF line endings"])
 		XCTAssertEqual(
 			messages(for: violations, rule: .trailingWhitespace), ["trailing whitespace is not allowed"])
 		XCTAssertEqual(
 			messages(for: violations, rule: .blankLines),
 			["multiple consecutive blank lines are not allowed"])
-		XCTAssertEqual(messages(for: violations, rule: .fileLength), ["file has 7 lines; maximum is 6"])
+		XCTAssertEqual(messages(for: violations, rule: .fileLength), ["file has 8 lines; maximum is 6"])
 		XCTAssertTrue(messages(for: violations, rule: .lineLength)[0].contains("maximum is 80"))
 	}
 

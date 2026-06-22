@@ -7,6 +7,7 @@ import PackageDescription
 var products: [Product] = [
 	.library(name: "WBLintCore", targets: ["WBLintCore"]),
 	.executable(name: "wblint", targets: ["WBLint"]),
+	.executable(name: "wblint-tests", targets: ["WBLintCoreTestRunner"]),
 ]
 
 var targets: [Target] = [
@@ -16,9 +17,10 @@ var targets: [Target] = [
 		dependencies: ["WBLintCore"],
 		path: "Tools/WBLint"
 	),
-	.testTarget(
-		name: "WBLintCoreTests",
-		dependencies: ["WBLintCore"]
+	.executableTarget(
+		name: "WBLintCoreTestRunner",
+		dependencies: ["WBLintCore"],
+		path: "Tests/WBLintCoreTests"
 	),
 ]
 
@@ -27,6 +29,7 @@ var targets: [Target] = [
 		contentsOf: [
 			.library(name: "WebPageCLI", targets: ["WebPageCLI"]),
 			.executable(name: "wb", targets: ["WBExecutable"]),
+			.executable(name: "wb-tests", targets: ["WebPageCLITestRunner"]),
 		], at: 0)
 
 	targets.insert(
@@ -37,9 +40,10 @@ var targets: [Target] = [
 				dependencies: ["WebPageCLI"],
 				path: "Sources/WBExecutable"
 			),
-			.testTarget(
-				name: "WebPageCLITests",
-				dependencies: ["WebPageCLI"]
+			.executableTarget(
+				name: "WebPageCLITestRunner",
+				dependencies: ["WebPageCLI"],
+				path: "Tests/WebPageCLITests"
 			),
 		], at: 0)
 #endif

@@ -1,10 +1,10 @@
 /// Tests field parsing, wire request validation, response construction, codec
 /// behavior, and page snapshot compatibility models.
 import Foundation
-import XCTest
 @testable import WebPageCLI
 
-final class PageFieldAndProtocolTests: XCTestCase {
+struct PageFieldAndProtocolTests {
+
 	func testPageFieldListParsingTrimsAndDeduplicatesNames() throws {
 		XCTAssertEqual(
 			PageField.validList,
@@ -25,7 +25,7 @@ final class PageFieldAndProtocolTests: XCTestCase {
 			.withDestinationPath("/tmp/shot.png")
 			.withCoordinate("scroll", point: WirePoint(x: 1.5, y: 2), delta: WireDelta(x: -3, y: 4))
 
-		XCTAssertEqual(request.requiredBrowserID(), "deadbeef")
+		XCTAssertEqual(try request.requiredBrowserID(), "deadbeef")
 		XCTAssertEqual(try request.requiredURL().absoluteString, "https://example.com")
 		XCTAssertEqual(try request.requiredScript(), "return 1")
 		XCTAssertEqual(try request.requiredAction(), "42")

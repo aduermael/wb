@@ -1,10 +1,10 @@
 /// Exercises environment metadata, idle-timeout parsing, browser dump summaries,
 /// and session persistence in isolated temporary directories.
 import Foundation
-import XCTest
 @testable import WebPageCLI
 
-final class SessionStoreTests: XCTestCase {
+struct SessionStoreTests {
+
 	func testIdleTimeoutParsing() {
 		XCTAssertNil(WBConfig.parseIdleTimeout(nil))
 		XCTAssertNil(WBConfig.parseIdleTimeout(""))

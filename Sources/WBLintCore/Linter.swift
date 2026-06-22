@@ -768,7 +768,7 @@ enum SwiftMasker {
 }
 
 public enum WBLintCommand {
-	public static func run(arguments: [String]) -> Int32 {
+	public static func run(arguments: [String], printReport: Bool = true) -> Int32 {
 		let rootURL =
 			arguments.first.map {
 				URL(fileURLWithPath: $0).standardizedFileURL
@@ -778,7 +778,9 @@ public enum WBLintCommand {
 		do {
 			let violations = try Linter(rootURL: rootURL, configuration: defaultLintConfiguration)
 				.run(paths: paths)
-			LintReport(violations: violations).print()
+			if printReport {
+				LintReport(violations: violations).print()
+			}
 			if violations.isEmpty {
 				return 0
 			} else {

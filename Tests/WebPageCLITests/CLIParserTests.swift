@@ -1,10 +1,10 @@
 /// Covers command-line parsing for every deterministic command shape before
 /// requests are handed to the daemon or macOS browser runtime.
 import Foundation
-import XCTest
 @testable import WebPageCLI
 
-final class CLIParserTests: XCTestCase {
+struct CLIParserTests {
+
 	func testEmptyArgumentsShowRootHelp() throws {
 		let invocation = try CLIParser.parse([])
 

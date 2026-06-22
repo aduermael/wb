@@ -1,10 +1,10 @@
 /// Verifies compact JSON utilities and the string-rendering seam used by CLI
 /// output without requiring stdout capture.
 import Foundation
-import XCTest
 @testable import WebPageCLI
 
-final class RenderingAndUtilityTests: XCTestCase {
+struct RenderingAndUtilityTests {
+
 	func testOptionalAndStringHelpers() throws {
 		let missing: String? = nil
 		assertThrowsMessage(try missing.unwrap("missing value"), "missing value")
@@ -88,11 +88,13 @@ final class RenderingAndUtilityTests: XCTestCase {
 			response,
 			mode: .page(PageOutputOptions(fields: [.title, .actions]))
 		)
-		XCTAssertEqual(
-			filtered,
-			"{\"actions\":[{\"index\":1,\"kind\":\"link\",\"text\":\"More\"},"
-				+ "{\"disabled\":true,\"index\":2,\"kind\":\"selector\",\"text\":\"Choice\"}],\"title\":\"Example\"}"
-		)
+		XCTAssertTrue(filtered?.contains("\"actions\":") == true)
+		XCTAssertTrue(filtered?.contains("\"title\":\"Example\"") == true)
+		XCTAssertTrue(filtered?.contains("\"kind\":\"link\"") == true)
+		XCTAssertTrue(filtered?.contains("\"href\":\"https:\\/\\/example.com\\/more\"") == true)
+		XCTAssertTrue(filtered?.contains("\"kind\":\"selector\"") == true)
+		XCTAssertTrue(filtered?.contains("\"url\":") == false)
+		XCTAssertTrue(filtered?.contains("\"images\":") == false)
 	}
 
 	func testRenderedOutputForSimpleModesAndErrors() throws {

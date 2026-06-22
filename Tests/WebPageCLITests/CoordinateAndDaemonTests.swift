@@ -1,10 +1,10 @@
 /// Covers pure coordinate-action request translation and daemon activity timing
 /// without opening WebKit pages or Unix sockets.
 import Foundation
-import XCTest
 @testable import WebPageCLI
 
-final class CoordinateAndDaemonTests: XCTestCase {
+struct CoordinateAndDaemonTests {
+
 	func testCoordinateActionBuildsClickPressDragAndRelease() throws {
 		let names = ["click", "press", "drag", "release"]
 

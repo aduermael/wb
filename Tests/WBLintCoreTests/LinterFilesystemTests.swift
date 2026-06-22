@@ -1,10 +1,10 @@
 /// Covers WBLintCore filesystem traversal, ignored directories, unreadable UTF-8
 /// handling, missing paths, and command-runner status codes.
 import Foundation
-import XCTest
 @testable import WBLintCore
 
-final class LinterFilesystemTests: XCTestCase {
+struct LinterFilesystemTests {
+
 	func testRunDiscoversSwiftFilesAndIgnoresGeneratedDirectories() throws {
 		try withLintTemporaryDirectory { root in
 			try writeFile(validSwiftSource("A"), to: root.appendingPathComponent("Sources/A.swift"))
@@ -52,10 +52,10 @@ final class LinterFilesystemTests: XCTestCase {
 	func testCommandRunnerReturnsSuccessAndFailureCodes() throws {
 		try withLintTemporaryDirectory { root in
 			try writeFile(defaultValidSwiftSource(), to: root.appendingPathComponent("Valid.swift"))
-			XCTAssertEqual(WBLintCommand.run(arguments: [root.path]), 0)
+			XCTAssertEqual(WBLintCommand.run(arguments: [root.path], printReport: false), 0)
 
 			try writeFile("import Foundation\n", to: root.appendingPathComponent("Invalid.swift"))
-			XCTAssertEqual(WBLintCommand.run(arguments: [root.path]), 1)
+			XCTAssertEqual(WBLintCommand.run(arguments: [root.path], printReport: false), 1)
 		}
 	}
 
