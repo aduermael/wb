@@ -20,6 +20,6 @@ Coordinate commands use top-left origin coordinates in the current web content v
 
 Browser dumps in `.wb/sessions` store resumable browser metadata, not full page text, resource lists, or action details. Use `wb page <id>` for live page inspection when needed.
 
-The `show` command attaches a native window to the same browser used by headless commands. While a browser window is visible, the daemon does not idle-exit. Use `wb hide <id>` or close the window to allow normal idle shutdown again.
+The `show` command attaches a native 800x600 window to the same browser used by headless commands. Use `wb resize <id> <width> <height>` to resize it, or `wb resize <id>` to reset it to 800x600. While a browser window is visible, the daemon does not idle-exit. Use `wb hide <id>` or close the window to allow normal idle shutdown again.
 
 Daemon logs are appended to `/tmp/wb-webpage-<uid>.log` by default. Use `wb daemon log` to print the exact path, or set `WB_LOG` to override it.

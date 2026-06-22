@@ -40,6 +40,10 @@ struct SessionStoreTests {
 			XCTAssertFalse(store.exists("notvalid"))
 			XCTAssertEqual(store.browserIDs(), ["0000000a", "0000000b"])
 			XCTAssertEqual(try store.load("0000000a").title, "A")
+			XCTAssertEqual(
+				try store.load("0000000a").windowSize,
+				BrowserWindowSize(width: 1000, height: 800)
+			)
 			XCTAssertEqual(try store.dumps().map(\.browser), ["0000000a", "0000000b"])
 
 			try store.delete("0000000a")
@@ -98,7 +102,9 @@ struct SessionStoreTests {
 			createdAt: "2024-01-01T00:00:00Z",
 			updatedAt: "2024-01-01T00:00:01Z",
 			dumpedAt: "2024-01-01T00:00:02Z",
-			snapshot: nil
+			snapshot: nil,
+			windowWidth: 1000,
+			windowHeight: 800
 		)
 	}
 }

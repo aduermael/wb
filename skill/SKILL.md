@@ -45,6 +45,7 @@ After the user completes the handoff, continue with the same browser ID and refr
 - `wb list`: list active and saved browsers as compact JSON.
 - `wb close <id>`: close the browser and delete any saved session for that ID.
 - `wb show <id>` / `wb hide <id>`: show or hide a lightweight browser window.
+- `wb resize <id> [<width> <height>]`: resize the browser window, or reset it to 800x600 when no size is provided.
 - `wb screenshot <id> <path.png|path.jpg> [--resource-timeout <seconds>] [--capture-delay <seconds>]`: wait for resources, pause briefly for visual settling, then capture the current viewport. `--resource-timeout` is capped at 100 seconds; `--capture-delay` defaults to 0.3 seconds and accepts 0 to disable.
 - `wb page <id> [--fields <list>] [--selectors|--action-details]`: print page JSON.
 - `wb click <id> <action>`: click a page action by 1-based index or action ID.
@@ -185,4 +186,4 @@ Use screenshots when visual layout matters, when a canvas/custom control is not 
 
 ## Install Fallback
 
-Assume `wb` is installed. If the command is unavailable, run the bundled `install.sh` support script next to this `SKILL.md`; it uses Homebrew when available and otherwise uses the standalone release installer. Continue after `wb` runs normally.
+Assume `wb` is installed. If the command is unavailable, run the bundled `install.sh` support script next to this `SKILL.md`; it tries Homebrew first, then npm, then the standalone release installer. Continue after `wb` runs normally.

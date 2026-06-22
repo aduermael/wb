@@ -1,0 +1,47 @@
+{
+  "name": "@aduermael_/wb",
+  "version": "0.0.0-development",
+  "description": "macOS web browser CLI for agents",
+  "license": "MIT",
+  "homepage": "https://github.com/aduermael/wb#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aduermael/wb.git"
+  },
+  "bugs": {
+    "url": "https://github.com/aduermael/wb/issues"
+  },
+  "keywords": [
+    "agent",
+    "browser",
+    "cli",
+    "macos",
+    "webkit"
+  ],
+  "bin": {
+    "wb": "npm/bin/wb.js"
+  },
+  "scripts": {
+    "postinstall": "node npm/scripts/install.js",
+    "test:npm": "node --check npm/bin/wb.js && node --check npm/scripts/install.js"
+  },
+  "files": [
+    "LICENSE",
+    "README.md",
+    "npm/bin/wb.js",
+    "npm/scripts/install.js"
+  ],
+  "os": [
+    "darwin"
+  ],
+  "cpu": [
+    "arm64",
+    "x64"
+  ],
+  "engines": {
+    "node": ">=16"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

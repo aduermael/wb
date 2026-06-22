@@ -221,9 +221,15 @@ private func rectDebugDescription(_ rect: NSRect) -> String {
 }
 
 private enum BrowserWindowMetrics {
-	static let defaultSize = NSSize(width: 1280, height: 900)
-	static let minimumSize = NSSize(width: 800, height: 600)
+	static let minimumSize = NSSize(
+		width: CGFloat(BrowserWindowSizing.minimumWidth),
+		height: CGFloat(BrowserWindowSizing.minimumHeight)
+	)
 	static let screenPadding: CGFloat = 40
+
+	static func nsSize(_ size: BrowserWindowSize) -> NSSize {
+		NSSize(width: CGFloat(size.width), height: CGFloat(size.height))
+	}
 }
 
 @available(macOS 26.0, *)
@@ -251,6 +257,7 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
 	private let browserID: String
 	private let page: WebPage
 	private let navigationCallbacks: BrowserWindowNavigationCallbacks
+	private var preferredSize = BrowserWindowSizing.defaultSize
 	private var window: NSWindow?
 	private var isHiddenByCommand = false
 
@@ -313,6 +320,39 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
 		BrowserApplicationHost.demoteIfNoVisibleWindows()
 	}
 
+	func resize(to size: BrowserWindowSize) {
+		preferredSize = size
+		guard let window else {
+			daemonLog("window resize stored browser=\(browserID) size=\(size.width)x\(size.height)")
+			return
+		}
+
+		let shouldRestoreVisibleWindow =
+			!isHiddenByCommand && window.isVisible && !window.isMiniaturized
+		let previousCenter = CGPoint(x: window.frame.midX, y: window.frame.midY)
+		window.setContentSize(BrowserWindowMetrics.nsSize(size))
+		var frame = window.frame
+		frame.origin.x = previousCenter.x - frame.width / 2
+		frame.origin.y = previousCenter.y - frame.height / 2
+		frame = constrainFrameToVisibleScreen(frame, for: window)
+		window.setFrame(frame, display: shouldRestoreVisibleWindow)
+		window.contentView?.layoutSubtreeIfNeeded()
+		if shouldRestoreVisibleWindow {
+			let application = BrowserApplicationHost.prepareForWindow()
+			application.unhide(nil)
+			window.collectionBehavior = Self.previewCollectionBehavior
+			window.level = .floating
+			application.activate(ignoringOtherApps: true)
+			window.makeKeyAndOrderFront(nil)
+			window.orderFrontRegardless()
+			window.displayIfNeeded()
+		}
+		daemonLog(
+			"window resized browser=\(browserID) frame=(\(rectDebugDescription(frame))) "
+				+ "restoreVisible=\(shouldRestoreVisibleWindow) visible=\(window.isVisible)"
+		)
+	}
+
 	func detachHiddenWindowForScreenshotRenderHost() {
 		guard let window, isHiddenByCommand, !window.isVisible, !window.isMiniaturized else {
 			return
@@ -352,7 +392,7 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
 
 	private func makeWindow() -> NSWindow {
 		let window = BrowserPanel(
-			contentRect: NSRect(origin: .zero, size: BrowserWindowMetrics.defaultSize),
+			contentRect: NSRect(origin: .zero, size: BrowserWindowMetrics.nsSize(preferredSize)),
 			styleMask: [
 				.titled,
 				.closable,
@@ -420,6 +460,33 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
 			"window positioned browser=\(browserID) frame=(\(rectDebugDescription(frame))) "
 				+ "screen=\(screen.localizedName)"
 		)
+	}
+
+	private func constrainFrameToVisibleScreen(_ frame: NSRect, for window: NSWindow) -> NSRect {
+		guard let screen = window.screen ?? NSScreen.main ?? NSScreen.screens.first else {
+			return frame
+		}
+
+		let visibleFrame = screen.visibleFrame
+		var constrained = frame
+		if constrained.width <= visibleFrame.width {
+			constrained.origin.x = min(
+				max(constrained.minX, visibleFrame.minX),
+				visibleFrame.maxX - constrained.width
+			)
+		} else {
+			constrained.origin.x = visibleFrame.minX
+		}
+
+		if constrained.height <= visibleFrame.height {
+			constrained.origin.y = min(
+				max(constrained.minY, visibleFrame.minY),
+				visibleFrame.maxY - constrained.height
+			)
+		} else {
+			constrained.origin.y = visibleFrame.minY
+		}
+		return constrained
 	}
 }
 

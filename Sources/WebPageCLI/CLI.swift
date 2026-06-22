@@ -70,6 +70,7 @@ enum HelpTopic {
 	case close
 	case show
 	case hide
+	case resize
 	case screenshot
 	case page
 	case click
@@ -223,6 +224,34 @@ struct CLIParser {
 			return CLIInvocation(
 				request: WireRequest(command: .browserHide).withBrowser(id),
 				renderMode: .silent,
+				daemon: .enabled
+			)
+
+		case "resize":
+			if arguments.containsHelpFlag {
+				return help(.resize)
+			}
+			let resizeUsage = "usage: wb resize <id> [<width> <height>]"
+			let id = try popBrowserID(
+				from: &arguments,
+				usage: resizeUsage
+			)
+			let size: BrowserWindowSize
+			if arguments.isEmpty {
+				size = BrowserWindowSizing.defaultSize
+			} else {
+				let width = try arguments.popInt(resizeUsage)
+				let height = try arguments.popInt(resizeUsage)
+				guard arguments.isEmpty else {
+					throw WBError.message("unexpected resize argument \(arguments[0])")
+				}
+				size = try BrowserWindowSizing.validate(width: width, height: height)
+			}
+			return CLIInvocation(
+				request: WireRequest(command: .browserResize)
+					.withBrowser(id)
+					.withWindowSize(size),
+				renderMode: .message,
 				daemon: .enabled
 			)
 
@@ -510,6 +539,8 @@ struct CLIParser {
 			return help(.show)
 		case "hide":
 			return help(.hide)
+		case "resize":
+			return help(.resize)
 		case "screenshot":
 			return help(.screenshot)
 		case "page":

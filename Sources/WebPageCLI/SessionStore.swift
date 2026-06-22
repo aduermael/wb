@@ -354,6 +354,8 @@ struct BrowserDump: Codable, Sendable {
 	let updatedAt: String
 	let dumpedAt: String
 	let snapshot: PageSnapshot?
+	var windowWidth: Int? = nil
+	var windowHeight: Int? = nil
 
 	func summary() -> BrowserSummary {
 		let snapshotTitle = snapshot.flatMap { $0.title.nilIfEmpty }
@@ -380,5 +382,12 @@ struct BrowserDump: Codable, Sendable {
 
 	var updatedDate: Date {
 		updatedAt.iso8601Date ?? createdDate
+	}
+
+	var windowSize: BrowserWindowSize? {
+		guard let windowWidth, let windowHeight else {
+			return nil
+		}
+		return try? BrowserWindowSizing.validate(width: windowWidth, height: windowHeight)
 	}
 }

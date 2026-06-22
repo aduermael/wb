@@ -3,6 +3,7 @@ set -eu
 
 repo="${WB_REPO:-aduermael/wb}"
 formula="${WB_BREW_FORMULA:-aduermael/tap/wb}"
+npm_package="${WB_NPM_PACKAGE:-@aduermael_/wb}"
 install_url="https://raw.githubusercontent.com/$repo/main/install.sh"
 
 say() {
@@ -90,6 +91,21 @@ find_installed_wb() {
     return 0
   fi
 
+  if have npm; then
+    npm_prefix="$(npm prefix -g 2>/dev/null || true)"
+    if [ -n "$npm_prefix" ]; then
+      for candidate in \
+        "$npm_prefix/bin/wb" \
+        "$npm_prefix/lib/node_modules/$npm_package/npm/bin/wb"
+      do
+        if [ -x "$candidate" ]; then
+          printf '%s\n' "$candidate"
+          return 0
+        fi
+      done
+    fi
+  fi
+
   return 1
 }
 
@@ -144,6 +160,24 @@ install_standalone() {
   curl -fsSL "$install_url" | env WB_REPO="$repo" WB_VERSION="${WB_VERSION:-}" WB_INSTALL_DIR="$install_dir" sh
 }
 
+install_npm() {
+  if ! have npm; then
+    return 1
+  fi
+
+  package_spec="$npm_package"
+  if [ -n "${WB_VERSION:-}" ] && [ "$WB_VERSION" != "latest" ]; then
+    case "$WB_VERSION" in
+      v*) version="${WB_VERSION#v}" ;;
+      *) version="$WB_VERSION" ;;
+    esac
+    package_spec="$npm_package@$version"
+  fi
+
+  say "Installing wb with npm..."
+  npm install -g "$package_spec"
+}
+
 if have wb; then
   say "wb is already available at $(command -v wb)"
   exit 0
@@ -160,11 +194,16 @@ esac
 if have brew; then
   say "Installing wb with Homebrew..."
   if ! brew install "$formula"; then
-    err "Homebrew install failed; trying the standalone installer."
-    install_standalone
+    err "Homebrew install failed; trying npm."
+    if ! install_npm; then
+      err "npm install unavailable or failed; trying the standalone installer."
+      install_standalone
+    fi
   fi
 else
-  install_standalone
+  if ! install_npm; then
+    install_standalone
+  fi
 fi
 
 ensure_wb_on_path

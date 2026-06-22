@@ -37,6 +37,50 @@ struct CLIParserTests {
 		}
 	}
 
+	func testShowHideAndResizeCommands() throws {
+		let show = try CLIParser.parse(["show", "deadbeef"])
+		XCTAssertEqual(show.request?.command, .browserShow)
+		XCTAssertEqual(show.request?.browser, "deadbeef")
+		guard case .silent = show.renderMode else {
+			return XCTFail("expected silent rendering")
+		}
+
+		let hide = try CLIParser.parse(["hide", "deadbeef"])
+		XCTAssertEqual(hide.request?.command, .browserHide)
+		XCTAssertEqual(hide.request?.browser, "deadbeef")
+
+		let defaultResize = try CLIParser.parse(["resize", "deadbeef"])
+		XCTAssertEqual(defaultResize.request?.command, .browserResize)
+		XCTAssertEqual(defaultResize.request?.browser, "deadbeef")
+		XCTAssertEqual(defaultResize.request?.windowWidth, BrowserWindowSizing.defaultWidth)
+		XCTAssertEqual(defaultResize.request?.windowHeight, BrowserWindowSizing.defaultHeight)
+		guard case .message = defaultResize.renderMode else {
+			return XCTFail("expected message rendering")
+		}
+
+		let explicitResize = try CLIParser.parse(["resize", "deadbeef", "1024", "768"])
+		XCTAssertEqual(explicitResize.request?.command, .browserResize)
+		XCTAssertEqual(explicitResize.request?.windowWidth, 1024)
+		XCTAssertEqual(explicitResize.request?.windowHeight, 768)
+
+		let shortResize = try CLIParser.parse(["resize", "deadbeef", "800", "200"])
+		XCTAssertEqual(shortResize.request?.windowWidth, 800)
+		XCTAssertEqual(shortResize.request?.windowHeight, 200)
+
+		assertThrowsMessage(
+			try CLIParser.parse(["resize", "deadbeef", "99", "600"]),
+			"window width must be at least 100"
+		)
+		assertThrowsMessage(
+			try CLIParser.parse(["resize", "deadbeef", "800", "99"]),
+			"window height must be at least 100"
+		)
+		assertThrowsMessage(
+			try CLIParser.parse(["resize", "deadbeef", "wide", "600"]),
+			"expected integer, got wide"
+		)
+	}
+
 	func testPositionalOpenNormalizesBrowserIdShape() throws {
 		let newBrowser = try CLIParser.parse(["example.com"])
 		XCTAssertEqual(newBrowser.request?.command, .open)

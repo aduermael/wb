@@ -25,7 +25,7 @@ For agent workflows, install the skill folder in the current project:
 curl -fsSL https://raw.githubusercontent.com/aduermael/wb/main/install-skill.sh | sh
 ```
 
-The project installer copies the `wb` skill into `.agents/skills/wb`, `.claude/skills/wb`, and `.grok/skills/wb` by default. The skill includes a bundled `install.sh` support script that makes the `wb` command available if an agent tries to use the skill before the CLI is installed.
+The project installer copies the `wb` skill into `.agents/skills/wb`, `.claude/skills/wb`, and `.grok/skills/wb` by default. The skill includes a bundled `install.sh` support script that makes the `wb` command available if an agent tries to use the skill before the CLI is installed. That support script tries Homebrew first, then npm, then the standalone installer.
 
 To install only one agent target:
 
@@ -44,6 +44,16 @@ To install only the CLI, use Homebrew:
 ```bash
 brew install aduermael/tap/wb
 ```
+
+After the npm package has been published, use npm:
+
+```bash
+npm install -g @aduermael_/wb
+```
+
+The npm package is a thin wrapper that downloads the prebuilt macOS release
+binary. It still requires macOS 26.0 or newer, and it does not require Xcode or
+a Swift toolchain.
 
 Or use the standalone installer:
 
@@ -67,7 +77,7 @@ To install a specific release:
 curl -fsSL https://raw.githubusercontent.com/aduermael/wb/main/install.sh | env WB_VERSION=0.1.0 sh
 ```
 
-Release builds check for a newer version at most once every 12 hours and print an update notice to stderr when stale. Run `wb update` to upgrade; Homebrew installs delegate to `brew update` and `brew upgrade wb`, while standalone installs replace the current binary.
+Release builds check for a newer version at most once every 12 hours and print an update notice to stderr when stale. Run `wb update` to upgrade; Homebrew installs delegate to `brew update` and `brew upgrade wb`, npm installs delegate to `npm install -g @aduermael_/wb@latest`, and standalone installs replace the current binary.
 
 ## ⚡ Quick Start
 
@@ -163,7 +173,7 @@ compile Swift with warnings treated as errors.
 
 ## 🤖 Agent Skill
 
-This repo includes a standalone agent skill folder at [skill](skill). It contains the skill instructions plus an `install.sh` support script that installs `wb` through Homebrew when available, or through the standalone installer otherwise.
+This repo includes a standalone agent skill folder at [skill](skill). It contains the skill instructions plus an `install.sh` support script that installs `wb` through Homebrew when available, npm when available, or the standalone installer otherwise.
 
 In this checkout, `.agents/skills/wb`, `.claude/skills/wb`, and `.grok/skills/wb` are symlinks to `skill/`, so each agent sees both files. In another project, use `install-skill.sh` from the install section to copy the folder into the local agent skill directories.
 
@@ -191,6 +201,7 @@ Use `wb page --help` to see filterable fields. Use `wb page <id> --fields title,
 - `wb close <id>`: close an active browser and delete any saved session for that ID.
 - `wb show <id>`: show a lightweight browser window for the browser.
 - `wb hide <id>`: hide the browser window without closing the browser.
+- `wb resize <id> [<width> <height>]`: resize the browser window, or reset it to 800x600 when no size is provided.
 - `wb screenshot <id> <destination.png|destination.jpg> [--resource-timeout <seconds>] [--capture-delay <seconds>]`: wait for resources, pause briefly for visual settling, then capture the current browser viewport as PNG or JPEG. `--resource-timeout` is capped at 100 seconds; `--capture-delay` defaults to 0.3 seconds and accepts 0 to disable.
 - `wb page <id> [--fields <list>] [--selectors|--action-details]`: refresh and print page JSON, including visible actions and loaded resource URLs.
 - `wb click <id> <action>`: click an action from the latest page/action list and print a compact summary.
