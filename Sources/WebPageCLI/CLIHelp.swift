@@ -13,6 +13,8 @@ func printHelp(_ topic: HelpTopic) {
 			Usage:
 			  wb [<id>] <url>
 			  wb env
+			  wb update
+			  wb version
 			  wb create
 			  wb list
 			  wb close <id>
@@ -35,6 +37,7 @@ func printHelp(_ topic: HelpTopic) {
 
 			Options:
 			  -h, --help            Show help.
+			  -V, --version         Show the wb version.
 
 			Notes:
 			  - Browsers persist between commands; use wb list to see saved IDs.
@@ -53,6 +56,27 @@ func printHelp(_ topic: HelpTopic) {
 			By default, wb uses .wb next to the nearest parent .git directory.
 			Outside a git checkout, it uses .wb under the current directory.
 			Set WB_DIR to override the environment directory.
+			""")
+
+	case .update:
+		print(
+			"""
+			Usage:
+			  wb update
+
+			Updates wb to the latest GitHub release.
+
+			When wb is installed with Homebrew, this runs brew update and brew upgrade wb.
+			Standalone release binaries replace their current executable in place.
+			""")
+
+	case .version:
+		print(
+			"""
+			Usage:
+			  wb version
+
+			Prints the wb version.
 			""")
 
 	case .create:

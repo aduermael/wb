@@ -74,6 +74,26 @@ TestHarness.run("RenderingAndUtilityTests.testRenderedOutputForSimpleModesAndErr
 	try renderingAndUtilityTests.testRenderedOutputForSimpleModesAndErrors()
 }
 
+let updaterTests = UpdaterTests()
+TestHarness.run("UpdaterTests.testUpdateAndVersionCommandsParseAsLocalCommands") {
+	try updaterTests.testUpdateAndVersionCommandsParseAsLocalCommands()
+}
+TestHarness.run("UpdaterTests.testUpdateCheckStateThrottlesForTwelveHours") {
+	updaterTests.testUpdateCheckStateThrottlesForTwelveHours()
+}
+TestHarness.run("UpdaterTests.testUpdateCheckResultNormalizesTagsAndSkipsDevelopmentBuilds") {
+	updaterTests.testUpdateCheckResultNormalizesTagsAndSkipsDevelopmentBuilds()
+}
+TestHarness.run("UpdaterTests.testAutomaticUpdateChecksCanBeDisabledWithEnvironment") {
+	updaterTests.testAutomaticUpdateChecksCanBeDisabledWithEnvironment()
+}
+TestHarness.run("UpdaterTests.testGitHubReleaseDecodesAssets") {
+	try updaterTests.testGitHubReleaseDecodesAssets()
+}
+TestHarness.run("UpdaterTests.testInstallationDetectorIdentifiesHomebrewExecutable") {
+	try updaterTests.testInstallationDetectorIdentifiesHomebrewExecutable()
+}
+
 let sessionStoreTests = SessionStoreTests()
 TestHarness.run("SessionStoreTests.testIdleTimeoutParsing") {
 	sessionStoreTests.testIdleTimeoutParsing()
