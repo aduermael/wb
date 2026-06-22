@@ -5,11 +5,12 @@ script_dir=$(CDPATH= cd "$(dirname "$0")" && pwd)
 . "$script_dir/scripts/codesign-wb.sh"
 
 usage() {
-  echo "Usage: ./release.sh <version> [--build-only|--publish-only] [--repo owner/name] [--tap-repo owner/name|--no-tap] [arm64|x86_64 ...]" >&2
+  echo "Usage: ./release.sh <version> [--build-only|--publish-only|--tap-only] [--repo owner/name] [--tap-repo owner/name|--no-tap] [arm64|x86_64 ...]" >&2
   echo "Examples:" >&2
   echo "  ./release.sh 0.1.0" >&2
   echo "  ./release.sh 0.1.0 --build-only" >&2
   echo "  ./release.sh 0.1.0 --publish-only" >&2
+  echo "  ./release.sh 0.1.0 --tap-only" >&2
   echo "  ./release.sh 0.1.0 --build-only arm64" >&2
   echo "  ./release.sh 0.1.0 --publish-only --no-tap" >&2
   echo "" >&2
@@ -31,7 +32,7 @@ need_cmd() {
 
 set_mode() {
   if [ "$mode" != "all" ] && [ "$mode" != "$1" ]; then
-    die "Choose only one of --build-only or --publish-only."
+    die "Choose only one of --build-only, --publish-only, or --tap-only."
   fi
   mode="$1"
 }
@@ -53,6 +54,9 @@ while [ "$#" -gt 0 ]; do
       ;;
     --publish-only)
       set_mode "publish"
+      ;;
+    --tap-only)
+      set_mode "tap"
       ;;
     --repo)
       shift
@@ -258,7 +262,46 @@ publish_release() {
 
 checksum_for_arch() {
   checksum_file="$dist/wb-macos-$1.tar.gz.sha256"
-  awk '{print $1}' "$checksum_file"
+  if [ -f "$checksum_file" ]; then
+    awk '{print $1}' "$checksum_file"
+    return
+  fi
+
+  release_checksum_for_arch "$1"
+}
+
+release_checksum_for_arch() {
+  arch="$1"
+  asset_name="wb-macos-$arch.tar.gz"
+  checksum_name="$asset_name.sha256"
+
+  asset_present="$(gh release view "$tag" --repo "$repo" --json assets --jq ".assets[] | select(.name == \"$asset_name\") | .name" 2>/dev/null || true)"
+  if [ -z "$asset_present" ]; then
+    die "Missing release asset in $repo $tag: $asset_name"
+  fi
+
+  digest="$(gh release view "$tag" --repo "$repo" --json assets --jq ".assets[] | select(.name == \"$asset_name\") | .digest" 2>/dev/null || true)"
+  case "$digest" in
+    sha256:*)
+      printf '%s\n' "${digest#sha256:}"
+      return
+      ;;
+    ""|null)
+      ;;
+    *)
+      die "Unexpected digest for $asset_name in $repo $tag: $digest"
+      ;;
+  esac
+
+  tmp_checksum_dir="$(mktemp -d "${TMPDIR:-/tmp}/wb-release-checksum.XXXXXX")"
+  (
+    trap 'rm -rf "$tmp_checksum_dir"' EXIT INT HUP TERM
+    gh release download "$tag" --repo "$repo" --pattern "$checksum_name" --dir "$tmp_checksum_dir" >/dev/null
+    if [ ! -f "$tmp_checksum_dir/$checksum_name" ]; then
+      die "Missing checksum asset in $repo $tag: $checksum_name"
+    fi
+    awk '{print $1}' "$tmp_checksum_dir/$checksum_name"
+  )
 }
 
 write_homebrew_formula() {
@@ -307,13 +350,6 @@ update_homebrew_tap() {
   need_cmd gh
   need_cmd git
 
-  for required_arch in arm64 x86_64; do
-    if [ ! -f "$dist/wb-macos-$required_arch.tar.gz.sha256" ]; then
-      echo "Skipping Homebrew tap update; missing checksum for $required_arch." >&2
-      return
-    fi
-  done
-
   arm_sha="$(checksum_for_arch arm64)"
   intel_sha="$(checksum_for_arch x86_64)"
   tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/wb-homebrew-tap.XXXXXX")"
@@ -353,6 +389,9 @@ case "$mode" in
     ;;
   publish)
     publish_release
+    update_homebrew_tap
+    ;;
+  tap)
     update_homebrew_tap
     ;;
 esac
