@@ -9,7 +9,7 @@ It gives scripts and coding agents a real persistent browser session without a b
 
 `wb` is built on macOS system browser technology and is macOS-only. It does not run on Linux, Windows, or older macOS releases.
 
-## Why wb
+## ✨ Why wb
 
 - **Small enough to vendor into agent workflows.** A single lightweight macOS binary, not a browser distribution.
 - **Made for command loops.** Create a browser once, then navigate, inspect, click, fill, scroll, screenshot, and evaluate JavaScript across separate CLI calls.
@@ -17,7 +17,7 @@ It gives scripts and coding agents a real persistent browser session without a b
 - **Headless until you need eyes.** Use `wb show <id>` to attach a live preview window to the same browser session, then `wb hide <id>` to go back to CLI-only control.
 - **Coordinates and screenshots line up.** The screenshot viewport is the same coordinate space used by `click`, `press`, `drag`, `release`, and `scroll`.
 
-## Install
+## 🚀 Install
 
 For agent workflows, install the skill folder in the current project:
 
@@ -69,7 +69,7 @@ curl -fsSL https://raw.githubusercontent.com/aduermael/wb/main/install.sh | env 
 
 Release builds check for a newer version at most once every 12 hours and print an update notice to stderr when stale. Run `wb update` to upgrade; Homebrew installs delegate to `brew update` and `brew upgrade wb`, while standalone installs replace the current binary.
 
-## Quick Start
+## ⚡ Quick Start
 
 ```bash
 wb https://example.com
@@ -97,7 +97,7 @@ $ wb show a3f19c0b
 $ wb hide a3f19c0b
 ```
 
-## Requirements
+## 🧰 Requirements
 
 The install path is intentionally light: prebuilt binaries do not require Xcode or a Swift toolchain.
 
@@ -112,7 +112,7 @@ To build from source:
 - A Mac with macOS 26.0 or newer
 - Xcode 26 or newer, with Swift 6.2 SDKs
 
-## Build From Source
+## 🛠️ Build From Source
 
 ```bash
 swift build -Xswiftc -warnings-as-errors
@@ -134,7 +134,7 @@ WB_CODESIGN_IDENTITY="wb local code signing" ./build.sh
 
 Set `WB_CODESIGN=off` to skip signing for local debugging.
 
-## Lint
+## 🧹 Lint
 
 Format Swift source with the native Swift formatter:
 
@@ -151,7 +151,7 @@ Check formatting and repository-specific lint rules:
 `lint.sh` first runs `swift format lint --strict`, then runs the custom SwiftPM
 `wblint` executable for rules that are specific to this repository.
 
-## Test
+## ✅ Test
 
 ```bash
 ./test.sh
@@ -161,13 +161,13 @@ The app target is macOS-only because it uses AppKit and WebKit, so the full test
 suite runs in macOS CI. `build.sh`, `test.sh`, `lint.sh`, and release builds
 compile Swift with warnings treated as errors.
 
-## Agent Skill
+## 🤖 Agent Skill
 
 This repo includes a standalone agent skill folder at [skill](skill). It contains the skill instructions plus an `install.sh` support script that installs `wb` through Homebrew when available, or through the standalone installer otherwise.
 
 In this checkout, `.agents/skills/wb`, `.claude/skills/wb`, and `.grok/skills/wb` are symlinks to `skill/`, so each agent sees both files. In another project, use `install-skill.sh` from the install section to copy the folder into the local agent skill directories.
 
-## Output
+## 📦 Output
 
 `wb` keeps structured CLI JSON compact by default. JSON is emitted on one line and omits fields with default values. Error responses preserve `ok:false`. Raw `eval` results are printed as returned strings.
 
@@ -179,7 +179,7 @@ Navigation errors are emitted as JSON responses with `ok:false` and a nonzero ex
 
 Use `wb page --help` to see filterable fields. Use `wb page <id> --fields title,url,imageCount,images,htmlBytes,jsonBytes` to print selected top-level fields.
 
-## Commands
+## ⌨️ Commands
 
 - `wb create`: create an empty browser and print its ID.
 - `wb env`: print public metadata for the current `.wb` environment.
@@ -208,22 +208,14 @@ Each command has its own help, for example `wb click --help` or `wb daemon --hel
 
 Browser IDs can be used across commands. If a saved browser is not currently active, `wb` resumes it automatically.
 
-## Notes
+## 📚 Documentation
 
-Browsers persist between commands and are autosaved after creation, navigation, interactions, and JavaScript evaluation. Use `wb list` to find browser IDs, `wb page <id>` to inspect the current page, and `wb close <id>` when you are done.
+Lower-level operational notes for persistence, environment isolation, coordinates, and daemon behavior live in [docs](docs).
 
-Environment state is resolved in this order: `WB_DIR`, then `.wb` in the nearest parent git root, then `.wb` under the current directory. The `.wb/environment.json` file stores a stable environment UUID and the public sessions directory name. WebKit cookies, local storage, cache, and related website data are isolated per environment through that UUID with `WKWebsiteDataStore(forIdentifier:)`.
+## 🤝 Contributing
 
-Treat `.wb/environment.json` as a local trust boundary. Copying or committing it intentionally reuses the same WebKit website data profile for that macOS user, so do not accept a tracked `.wb` directory from repositories you do not trust.
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, quality checks, and pull request guidance.
 
-Migration note: older sessions created in a cwd-local `wb/` directory or a non-root `.wb` directory are not moved automatically. Set `WB_DIR` to that old directory when you need those sessions, or manually migrate the old contents into the new git-root `.wb`.
+## 📄 License
 
-The `page` command refreshes the action list for the current document. If the page navigates or rerenders, run `wb page <id>` again before using action numbers from older output.
-
-Coordinate commands use top-left origin coordinates in the current web content viewport and do not open a window. `screenshot` captures that same viewport, so agents can inspect the image and use matching coordinates for `click`, `press`, `drag`, `release`, and `scroll`. If the browser is already visible through `wb show`, the same page updates are visible there.
-
-Browser dumps in `.wb/sessions` store resumable browser metadata, not full page text, image lists, or action details. Use `wb page <id>` for live page inspection when needed.
-
-The `show` command attaches a native window to the same browser used by headless commands. While a browser window is visible, the daemon does not idle-exit. Use `wb hide <id>` or close the window to allow normal idle shutdown again.
-
-Daemon logs are appended to `/tmp/wb-webpage-<uid>.log` by default. Use `wb daemon log` to print the exact path, or set `WB_LOG` to override it.
+`wb` is released under the [MIT License](LICENSE).
