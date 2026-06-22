@@ -178,7 +178,7 @@ build_release() {
 
   for arch in $archs; do
     echo "Building wb for macOS $arch..."
-    swift build -c release --arch "$arch"
+    swift build -c release --arch "$arch" -Xswiftc -warnings-as-errors
 
     bin_dir="$(swift build -c release --arch "$arch" --show-bin-path)"
     bin="$bin_dir/wb"

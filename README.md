@@ -115,7 +115,7 @@ To build from source:
 ## Build From Source
 
 ```bash
-swift build
+swift build -Xswiftc -warnings-as-errors
 .build/debug/wb create
 ```
 
@@ -158,7 +158,8 @@ Check formatting and repository-specific lint rules:
 ```
 
 The app target is macOS-only because it uses AppKit and WebKit, so the full test
-suite runs in macOS CI.
+suite runs in macOS CI. `build.sh`, `test.sh`, `lint.sh`, and release builds
+compile Swift with warnings treated as errors.
 
 ## Agent Skill
 
