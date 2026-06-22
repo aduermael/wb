@@ -101,6 +101,44 @@ enum BrowserApplicationHost {
         applicationMenu.addItem(quitItem)
         applicationMenuItem.submenu = applicationMenu
 
+        let editMenuItem = NSMenuItem(title: "Edit", action: nil, keyEquivalent: "")
+        mainMenu.addItem(editMenuItem)
+
+        let editMenu = NSMenu(title: "Edit")
+        editMenu.addItem(NSMenuItem(
+            title: "Undo",
+            action: Selector(("undo:")),
+            keyEquivalent: "z"
+        ))
+        editMenu.addItem(NSMenuItem(
+            title: "Redo",
+            action: Selector(("redo:")),
+            keyEquivalent: "Z"
+        ))
+        editMenu.addItem(.separator())
+        editMenu.addItem(NSMenuItem(
+            title: "Cut",
+            action: #selector(NSText.cut(_:)),
+            keyEquivalent: "x"
+        ))
+        editMenu.addItem(NSMenuItem(
+            title: "Copy",
+            action: #selector(NSText.copy(_:)),
+            keyEquivalent: "c"
+        ))
+        editMenu.addItem(NSMenuItem(
+            title: "Paste",
+            action: #selector(NSText.paste(_:)),
+            keyEquivalent: "v"
+        ))
+        editMenu.addItem(.separator())
+        editMenu.addItem(NSMenuItem(
+            title: "Select All",
+            action: #selector(NSText.selectAll(_:)),
+            keyEquivalent: "a"
+        ))
+        editMenuItem.submenu = editMenu
+
         let windowMenuItem = NSMenuItem(title: "Window", action: nil, keyEquivalent: "")
         mainMenu.addItem(windowMenuItem)
 
@@ -219,6 +257,7 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
         let window = window ?? makeWindow()
         window.collectionBehavior = Self.previewCollectionBehavior
         window.level = .floating
+        application.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
         window.orderFrontRegardless()
         daemonLog(
@@ -268,7 +307,6 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
                 .closable,
                 .miniaturizable,
                 .resizable,
-                .nonactivatingPanel,
             ],
             backing: .buffered,
             defer: false
