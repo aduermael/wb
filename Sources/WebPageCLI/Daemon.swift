@@ -141,7 +141,7 @@ final class DaemonClient {
 
 	func send(_ request: WireRequest, startIfNeeded: Bool = true) throws -> WireResponse {
 		if startIfNeeded {
-			try ensureCompatibleDaemon()
+			try ensureCompatibleDaemon(replaceIncompatible: request.command != .browserResize)
 		}
 
 		do {
@@ -186,7 +186,7 @@ final class DaemonClient {
 		}
 	}
 
-	private func ensureCompatibleDaemon() throws {
+	private func ensureCompatibleDaemon(replaceIncompatible: Bool = true) throws {
 		let response: WireResponse
 		do {
 			response = try sendWithoutStarting(WireRequest(command: .ping))
@@ -205,18 +205,31 @@ final class DaemonClient {
 				return
 			}
 
+			guard replaceIncompatible else {
+				throw incompatibleDaemonError()
+			}
 			daemonLog("daemon environment mismatch; replacing daemon socket=\(socketPath)")
 			try stopIncompatibleDaemon()
 			try startDaemon()
 			return
 		}
 
+		guard replaceIncompatible else {
+			throw incompatibleDaemonError()
+		}
 		daemonLog(
 			"daemon protocol mismatch current=\(String(describing: response.protocolVersion)) "
 				+ "expected=\(WireProtocol.version); replacing"
 		)
 		try stopIncompatibleDaemon()
 		try startDaemon()
+	}
+
+	private func incompatibleDaemonError() -> WBError {
+		WBError.message(
+			"running daemon was started by a different wb build; "
+				+ "use the same executable for show and resize, or stop the daemon before retrying"
+		)
 	}
 
 	private func isCompatibleEnvironment(_ daemonEnvironment: WBEnvironmentMetadata?) throws -> Bool {

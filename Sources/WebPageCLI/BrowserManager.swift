@@ -27,6 +27,7 @@ final class BrowserManager: @unchecked Sendable {
 		do {
 			let request = try JSONDecoder().decode(WireRequest.self, from: data)
 			try request.validateResourceLoading()
+			try request.validateWindowSize()
 			daemonLog("request command=\(request.command.rawValue) browser=\(request.browser ?? "-")")
 			let response = try await handle(request)
 			daemonLog(
@@ -82,6 +83,15 @@ final class BrowserManager: @unchecked Sendable {
 			let browser = try await requireBrowser(request.browser)
 			browser.hideWindow()
 			return WireResponse.success().withBrowser(browser.id)
+
+		case .browserResize:
+			let browser = try await requireBrowser(request.browser)
+			let size = try request.windowSize()
+			browser.resizeWindow(to: size)
+			scheduleAutosave(browser, reason: "resize")
+			return WireResponse.success()
+				.withBrowser(browser.id)
+				.withMessage("resized \(size.width)x\(size.height)")
 
 		case .open:
 			let url = try request.requiredURL()
@@ -418,6 +428,9 @@ final class BrowserManager: @unchecked Sendable {
 			createdAt: dump.createdDate,
 			updatedAt: dump.updatedDate
 		)
+		if let windowSize = dump.windowSize {
+			browser.resizeWindow(to: windowSize)
+		}
 
 		if showingWindow {
 			browser.showWindow()

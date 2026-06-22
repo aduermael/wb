@@ -14,6 +14,7 @@ final class BrowserInstance {
 	private let page: WebPage
 	private var actions: [BrowserAction] = []
 	private var windowController: BrowserWindowController?
+	private var previewWindowSize = BrowserWindowSizing.defaultSize
 	private var navigationObserverTask: Task<Void, Never>?
 	private var navigationSequence = 0
 	private var navigationObservation = NavigationObservationState()
@@ -425,7 +426,9 @@ final class BrowserInstance {
 			createdAt: createdAt.iso8601String,
 			updatedAt: updatedAt.iso8601String,
 			dumpedAt: Date().iso8601String,
-			snapshot: nil
+			snapshot: nil,
+			windowWidth: previewWindowSize.width,
+			windowHeight: previewWindowSize.height
 		)
 		daemonLog("browser dump metadata complete id=\(id) url=\(dump.url ?? "-") actions=\(actionCount)")
 		return dump
@@ -442,7 +445,7 @@ final class BrowserInstance {
 	func showWindow() {
 		daemonLog("browser show window id=\(id)")
 		if windowController == nil {
-			windowController = BrowserWindowController(
+			let controller = BrowserWindowController(
 				browserID: id,
 				page: page,
 				navigationCallbacks: BrowserWindowNavigationCallbacks(
@@ -454,8 +457,16 @@ final class BrowserInstance {
 					}
 				)
 			)
+			controller.resize(to: previewWindowSize)
+			windowController = controller
 		}
 		windowController?.show()
+	}
+
+	func resizeWindow(to size: BrowserWindowSize) {
+		daemonLog("browser resize window id=\(id) size=\(size.width)x\(size.height)")
+		previewWindowSize = size
+		windowController?.resize(to: size)
 	}
 
 	func hideWindow() {

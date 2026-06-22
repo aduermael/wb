@@ -7,6 +7,9 @@ TestHarness.run("CLIParserTests.testEmptyArgumentsShowRootHelp") {
 TestHarness.run("CLIParserTests.testCreateListAndCloseCommands") {
 	try cliParserTests.testCreateListAndCloseCommands()
 }
+TestHarness.run("CLIParserTests.testShowHideAndResizeCommands") {
+	try cliParserTests.testShowHideAndResizeCommands()
+}
 TestHarness.run("CLIParserTests.testPositionalOpenNormalizesBrowserIdShape") {
 	try cliParserTests.testPositionalOpenNormalizesBrowserIdShape()
 }
@@ -49,6 +52,9 @@ TestHarness.run("PageFieldAndProtocolTests.testResourceTimeoutValidationAndWaitS
 }
 TestHarness.run("PageFieldAndProtocolTests.testResourceLoadingValidationRejectsUnsupportedCommands") {
 	try pageFieldAndProtocolTests.testResourceLoadingValidationRejectsUnsupportedCommands()
+}
+TestHarness.run("PageFieldAndProtocolTests.testWindowSizeValidation") {
+	try pageFieldAndProtocolTests.testWindowSizeValidation()
 }
 TestHarness.run("PageFieldAndProtocolTests.testPageLoadStatusTracksPageResourceAndQuietStates") {
 	try pageFieldAndProtocolTests.testPageLoadStatusTracksPageResourceAndQuietStates()

@@ -20,6 +20,7 @@ func printHelp(_ topic: HelpTopic) {
 			  wb close <id>
 			  wb show <id>
 			  wb hide <id>
+			  wb resize <id> [<width> <height>]
 			  wb screenshot <id> <destination.png|destination.jpg> [--resource-timeout <seconds>]
 			    [--capture-delay <seconds>]
 
@@ -126,6 +127,18 @@ func printHelp(_ topic: HelpTopic) {
 			  wb hide <id>
 
 			Hides the browser window without closing the browser.
+			""")
+
+	case .resize:
+		print(
+			"""
+			Usage:
+			  wb resize <id> [<width> <height>]
+
+			Resizes the browser preview window. Without dimensions, resets the
+			window to \(BrowserWindowSizing.defaultWidth)x\(BrowserWindowSizing.defaultHeight).
+
+			Dimensions must be at least \(BrowserWindowSizing.minimumWidth)x\(BrowserWindowSizing.minimumHeight).
 			""")
 
 	case .screenshot:

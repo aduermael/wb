@@ -4,7 +4,7 @@
 import Foundation
 
 enum WireProtocol {
-	static let version = 32
+	static let version = 34
 }
 
 enum DaemonTiming {
@@ -69,6 +69,29 @@ enum ScreenshotCapture {
 	}
 }
 
+struct BrowserWindowSize: Equatable, Sendable {
+	let width: Int
+	let height: Int
+}
+
+enum BrowserWindowSizing {
+	static let defaultWidth = 800
+	static let defaultHeight = 600
+	static let minimumWidth = 100
+	static let minimumHeight = 100
+	static let defaultSize = BrowserWindowSize(width: defaultWidth, height: defaultHeight)
+
+	static func validate(width: Int, height: Int) throws -> BrowserWindowSize {
+		guard width >= minimumWidth else {
+			throw WBError.message("window width must be at least \(minimumWidth)")
+		}
+		guard height >= minimumHeight else {
+			throw WBError.message("window height must be at least \(minimumHeight)")
+		}
+		return BrowserWindowSize(width: width, height: height)
+	}
+}
+
 enum WireCommand: String, Codable, Equatable, Sendable {
 	case ping
 	case browserCreate
@@ -76,6 +99,7 @@ enum WireCommand: String, Codable, Equatable, Sendable {
 	case browserClose
 	case browserShow
 	case browserHide
+	case browserResize
 	case open
 	case page
 	case click
@@ -105,6 +129,8 @@ struct WireRequest: Codable, Sendable {
 	var waitForResources: Bool? = nil
 	var resourceTimeout: TimeInterval? = nil
 	var screenshotDelay: TimeInterval? = nil
+	var windowWidth: Int? = nil
+	var windowHeight: Int? = nil
 
 	init(command: WireCommand) {
 		self.command = command
@@ -168,6 +194,13 @@ struct WireRequest: Codable, Sendable {
 	func withScreenshotDelay(_ delay: TimeInterval?) -> WireRequest {
 		var request = self
 		request.screenshotDelay = delay
+		return request
+	}
+
+	func withWindowSize(_ size: BrowserWindowSize) -> WireRequest {
+		var request = self
+		request.windowWidth = size.width
+		request.windowHeight = size.height
 		return request
 	}
 
@@ -238,6 +271,21 @@ struct WireRequest: Codable, Sendable {
 		try ScreenshotCapture.validateDelay(screenshotDelay ?? defaultDelay)
 	}
 
+	func windowSize(default defaultSize: BrowserWindowSize = BrowserWindowSizing.defaultSize) throws
+		-> BrowserWindowSize
+	{
+		switch (windowWidth, windowHeight) {
+		case (.none, .none):
+			return defaultSize
+		case (.none, .some):
+			throw WBError.message("missing window width")
+		case (.some, .none):
+			throw WBError.message("missing window height")
+		case (.some(let width), .some(let height)):
+			return try BrowserWindowSizing.validate(width: width, height: height)
+		}
+	}
+
 	func validateResourceLoading() throws {
 		let requestsResourceLoading = waitForResources == true || resourceTimeout != nil
 		if requestsResourceLoading && command != .open && command != .screenshot {
@@ -255,6 +303,16 @@ struct WireRequest: Codable, Sendable {
 		}
 		if let screenshotDelay {
 			_ = try ScreenshotCapture.validateDelay(screenshotDelay)
+		}
+	}
+
+	func validateWindowSize() throws {
+		let requestsWindowSize = windowWidth != nil || windowHeight != nil
+		if requestsWindowSize && command != .browserResize {
+			throw WBError.message("window size options are only supported for resize command")
+		}
+		if command == .browserResize {
+			_ = try windowSize()
 		}
 	}
 }

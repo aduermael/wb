@@ -191,6 +191,7 @@ Use `wb page --help` to see filterable fields. Use `wb page <id> --fields title,
 - `wb close <id>`: close an active browser and delete any saved session for that ID.
 - `wb show <id>`: show a lightweight browser window for the browser.
 - `wb hide <id>`: hide the browser window without closing the browser.
+- `wb resize <id> [<width> <height>]`: resize the browser window, or reset it to 800x600 when no size is provided.
 - `wb screenshot <id> <destination.png|destination.jpg> [--resource-timeout <seconds>] [--capture-delay <seconds>]`: wait for resources, pause briefly for visual settling, then capture the current browser viewport as PNG or JPEG. `--resource-timeout` is capped at 100 seconds; `--capture-delay` defaults to 0.3 seconds and accepts 0 to disable.
 - `wb page <id> [--fields <list>] [--selectors|--action-details]`: refresh and print page JSON, including visible actions and loaded resource URLs.
 - `wb click <id> <action>`: click an action from the latest page/action list and print a compact summary.

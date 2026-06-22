@@ -144,6 +144,48 @@ struct PageFieldAndProtocolTests {
 		)
 	}
 
+	func testWindowSizeValidation() throws {
+		XCTAssertEqual(
+			try WireRequest(command: .browserResize).windowSize(),
+			BrowserWindowSizing.defaultSize
+		)
+
+		let resize = WireRequest(command: .browserResize)
+			.withWindowSize(BrowserWindowSize(width: 1024, height: 768))
+		XCTAssertEqual(try resize.windowSize(), BrowserWindowSize(width: 1024, height: 768))
+		try resize.validateWindowSize()
+		try WireRequest(command: .browserResize)
+			.withWindowSize(BrowserWindowSize(width: 800, height: 200))
+			.validateWindowSize()
+
+		assertThrowsMessage(
+			try WireRequest(command: .browserResize)
+				.withWindowSize(BrowserWindowSize(width: 99, height: 600))
+				.validateWindowSize(),
+			"window width must be at least 100"
+		)
+		assertThrowsMessage(
+			try WireRequest(command: .browserResize)
+				.withWindowSize(BrowserWindowSize(width: 800, height: 99))
+				.validateWindowSize(),
+			"window height must be at least 100"
+		)
+		assertThrowsMessage(
+			try WireRequest(command: .page)
+				.withWindowSize(BrowserWindowSize(width: 800, height: 600))
+				.validateWindowSize(),
+			"window size options are only supported for resize command"
+		)
+
+		var missingWidth = WireRequest(command: .browserResize)
+		missingWidth.windowHeight = 600
+		assertThrowsMessage(try missingWidth.validateWindowSize(), "missing window width")
+
+		var missingHeight = WireRequest(command: .browserResize)
+		missingHeight.windowWidth = 800
+		assertThrowsMessage(try missingHeight.validateWindowSize(), "missing window height")
+	}
+
 	func testPageLoadStatusTracksPageResourceAndQuietStates() throws {
 		let loading = PageLoadStatus(readyState: "loading", quietFor: 2)
 		XCTAssertTrue(loading.pageLoading)
