@@ -58,23 +58,12 @@ final class BrowserManager: @unchecked Sendable {
 		case .browserList:
 			return WireResponse.success().withBrowsers(try summaries())
 
-		case .browserClose:
-			let id = try request.requiredBrowserID()
-			let removedBrowser = browsers.removeValue(forKey: id)
-			removedBrowser?.close()
-			let removedActive = removedBrowser != nil
-			let removedDump = sessionStore.exists(id)
-			if removedDump {
-				try sessionStore.delete(id)
-			}
-
-			guard removedActive || removedDump else {
-				throw unknownBrowser(id)
-			}
-			daemonLog("browser closed id=\(id) removedActive=\(removedActive) removedDump=\(removedDump)")
+		case .browserRemove:
+			let ids = try browserIDs(forRemovalTarget: request.browserRemovalTarget())
+			try removeBrowsers(ids)
 			return WireResponse.success()
-				.withBrowser(id)
-				.withMessage("closed")
+				.withBrowser(ids.count == 1 ? ids[0] : nil)
+				.withMessage(removeMessage(count: ids.count))
 
 		case .browserShow:
 			let browser = try await showBrowser(request.browser)
@@ -386,6 +375,46 @@ final class BrowserManager: @unchecked Sendable {
 		return summariesByID.values.sorted {
 			$0.browser.localizedStandardCompare($1.browser) == .orderedAscending
 		}
+	}
+
+	private func browserIDs(forRemovalTarget target: BrowserRemovalTarget) throws -> [String] {
+		switch target {
+		case .all:
+			return allKnownBrowserIDs()
+
+		case .ids(let requestedIDs):
+			let requestedIDs = requestedIDs.uniqued()
+			let knownIDs = Set(allKnownBrowserIDs())
+			if let unknownID = requestedIDs.first(where: { !knownIDs.contains($0) }) {
+				throw unknownBrowser(unknownID)
+			}
+			return requestedIDs
+		}
+	}
+
+	private func allKnownBrowserIDs() -> [String] {
+		Array(Set(browsers.keys).union(sessionStore.browserIDs()))
+			.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+	}
+
+	private func removeBrowsers(_ ids: [String]) throws {
+		for id in ids {
+			let removedBrowser = browsers.removeValue(forKey: id)
+			removedBrowser?.close()
+			let removedActive = removedBrowser != nil
+			let removedDump = sessionStore.exists(id)
+			if removedDump {
+				try sessionStore.delete(id)
+			}
+
+			daemonLog(
+				"browser removed id=\(id) removedActive=\(removedActive) removedDump=\(removedDump)"
+			)
+		}
+	}
+
+	private func removeMessage(count: Int) -> String {
+		count == 1 ? "removed" : "removed \(count) browsers"
 	}
 
 	private func dump(_ browser: BrowserInstance) async throws -> BrowserDump {

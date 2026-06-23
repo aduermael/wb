@@ -4,7 +4,7 @@
 import Foundation
 
 enum WireProtocol {
-	static let version = 40
+	static let version = 41
 }
 
 enum DaemonTiming {
@@ -189,7 +189,7 @@ enum WireCommand: String, Codable, Equatable, Sendable {
 	case ping
 	case browserCreate
 	case browserList
-	case browserClose
+	case browserRemove
 	case browserShow
 	case browserHide
 	case browserResize
@@ -209,6 +209,8 @@ enum WireCommand: String, Codable, Equatable, Sendable {
 struct WireRequest: Codable, Sendable {
 	var command: WireCommand
 	var browser: String? = nil
+	var browsers: [String]? = nil
+	var allBrowsers: Bool? = nil
 	var url: String? = nil
 	var script: String? = nil
 	var functionBody: Bool? = nil
@@ -239,6 +241,18 @@ struct WireRequest: Codable, Sendable {
 	func withBrowser(_ browser: String?) -> WireRequest {
 		var request = self
 		request.browser = browser
+		return request
+	}
+
+	func withBrowsers(_ browsers: [String]) -> WireRequest {
+		var request = self
+		request.browsers = browsers
+		return request
+	}
+
+	func withAllBrowsers(_ allBrowsers: Bool) -> WireRequest {
+		var request = self
+		request.allBrowsers = allBrowsers ? true : nil
 		return request
 	}
 
@@ -331,6 +345,26 @@ struct WireRequest: Codable, Sendable {
 
 	func requiredBrowserID() throws -> String {
 		try browser.nilIfEmpty.unwrap("missing browser id")
+	}
+
+	func browserRemovalTarget() throws -> BrowserRemovalTarget {
+		var ids: [String] = []
+		if let browser = browser.nilIfEmpty {
+			ids.append(browser)
+		}
+		ids.append(contentsOf: browsers ?? [])
+
+		if allBrowsers == true {
+			guard ids.isEmpty else {
+				throw WBError.message("cannot combine --all with browser IDs")
+			}
+			return .all
+		}
+
+		guard !ids.isEmpty else {
+			throw WBError.message("missing browser id")
+		}
+		return .ids(ids)
 	}
 
 	func requiredURL() throws -> URL {
@@ -500,6 +534,11 @@ struct WireRequest: Codable, Sendable {
 			_ = try windowSize()
 		}
 	}
+}
+
+enum BrowserRemovalTarget: Equatable, Sendable {
+	case all
+	case ids([String])
 }
 
 struct WirePoint: Sendable {

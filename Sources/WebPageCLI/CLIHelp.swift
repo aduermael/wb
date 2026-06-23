@@ -17,8 +17,9 @@ func printHelp(_ topic: HelpTopic) {
 			  wb update
 			  wb version
 			  wb create
-			  wb list
-			  wb close <id>
+			  wb list [--quiet|-q]
+			  wb remove <id> [<id> ...]
+			  wb remove --all
 			  wb show <id>
 			  wb hide <id>
 			  wb resize <id> [<width> <height>]
@@ -132,18 +133,25 @@ func printHelp(_ topic: HelpTopic) {
 		print(
 			"""
 			Usage:
-			  wb list
+			  wb list [--quiet|-q]
 
 			Lists active and saved browsers as compact JSON.
+
+			Options:
+			  -q, --quiet           Print only browser IDs, one per line.
 			""")
 
-	case .close:
+	case .remove:
 		print(
 			"""
 			Usage:
-			  wb close <id>
+			  wb remove <id> [<id> ...]
+			  wb remove --all
 
-			Closes an active browser and deletes any saved session for that ID.
+			Removes active browsers and deletes any saved sessions for those IDs.
+
+			Options:
+			  --all                 Remove every active and saved browser.
 			""")
 
 	case .show:

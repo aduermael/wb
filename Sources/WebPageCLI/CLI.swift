@@ -53,6 +53,7 @@ enum RenderMode {
 	case daemonStart
 	case daemonLogPath
 	case browserID
+	case browserIDs
 	case browsers
 	case pageSummary
 	case page(PageOutputOptions)
@@ -69,7 +70,7 @@ enum HelpTopic {
 	case version
 	case create
 	case list
-	case close
+	case remove
 	case show
 	case hide
 	case resize
@@ -175,28 +176,34 @@ struct CLIParser {
 			if arguments.containsHelpFlag {
 				return help(.list)
 			}
+			let longQuiet = arguments.removeFlag("--quiet")
+			let shortQuiet = arguments.removeFlag("-q")
+			let quiet = longQuiet || shortQuiet
 			guard arguments.isEmpty else {
 				throw WBError.message("unexpected list argument \(arguments[0])")
 			}
 			return CLIInvocation(
 				request: WireRequest(command: .browserList),
-				renderMode: .browsers,
+				renderMode: quiet ? .browserIDs : .browsers,
 				daemon: .enabled
 			)
 
-		case "close":
+		case "remove":
 			if arguments.containsHelpFlag {
-				return help(.close)
+				return help(.remove)
 			}
-			let id = try popBrowserID(
-				from: &arguments,
-				usage: "usage: wb close <id>"
-			)
-			guard arguments.isEmpty else {
-				throw WBError.message("unexpected close argument \(arguments[0])")
+			let target = try parseBrowserRemoval(arguments)
+			let request: WireRequest
+			switch target {
+			case .all:
+				request = WireRequest(command: .browserRemove)
+					.withAllBrowsers(true)
+			case .ids(let ids):
+				request = WireRequest(command: .browserRemove)
+					.withBrowsers(ids)
 			}
 			return CLIInvocation(
-				request: WireRequest(command: .browserClose).withBrowser(id),
+				request: request,
 				renderMode: .message,
 				daemon: .enabled
 			)
@@ -571,6 +578,25 @@ struct CLIParser {
 		usage: String
 	) throws -> String {
 		return try arguments.popFirst(usage)
+	}
+
+	private static func parseBrowserRemoval(_ rawArguments: [String]) throws -> BrowserRemovalTarget {
+		var arguments = rawArguments
+		let removeUsage = "usage: wb remove <id> [<id> ...]\n       wb remove --all"
+		let all = arguments.removeFlag("--all")
+		if all {
+			guard arguments.isEmpty else {
+				throw WBError.message("cannot combine --all with browser IDs")
+			}
+			return .all
+		}
+		if let option = arguments.first(where: { $0.hasPrefix("-") }) {
+			throw WBError.message("unknown remove option \(option)")
+		}
+		guard !arguments.isEmpty else {
+			throw WBError.message(removeUsage)
+		}
+		return .ids(arguments)
 	}
 
 	private static func parseCoordinatePointCommand(

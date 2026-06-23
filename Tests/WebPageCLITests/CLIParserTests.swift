@@ -15,7 +15,7 @@ struct CLIParserTests {
 		}
 	}
 
-	func testCreateListAndCloseCommands() throws {
+	func testCreateListAndRemoveCommands() throws {
 		let create = try CLIParser.parse(["create"])
 		XCTAssertEqual(create.request?.command, .browserCreate)
 		XCTAssertTrue(create.startDaemon)
@@ -29,12 +29,44 @@ struct CLIParserTests {
 			return XCTFail("expected browsers rendering")
 		}
 
-		let close = try CLIParser.parse(["close", "a1b2c3d4"])
-		XCTAssertEqual(close.request?.command, .browserClose)
-		XCTAssertEqual(close.request?.browser, "a1b2c3d4")
-		guard case .message = close.renderMode else {
+		let quietList = try CLIParser.parse(["list", "-q"])
+		XCTAssertEqual(quietList.request?.command, .browserList)
+		guard case .browserIDs = quietList.renderMode else {
+			return XCTFail("expected browser id rendering")
+		}
+
+		let remove = try CLIParser.parse(["remove", "a1b2c3d4", "deadbeef"])
+		XCTAssertEqual(remove.request?.command, .browserRemove)
+		XCTAssertNil(remove.request?.browser)
+		XCTAssertEqual(remove.request?.browsers, ["a1b2c3d4", "deadbeef"])
+		guard case .message = remove.renderMode else {
 			return XCTFail("expected message rendering")
 		}
+
+		let removeAll = try CLIParser.parse(["remove", "--all"])
+		XCTAssertEqual(removeAll.request?.command, .browserRemove)
+		XCTAssertEqual(removeAll.request?.allBrowsers, true)
+		XCTAssertNil(removeAll.request?.browsers)
+		guard case .message = removeAll.renderMode else {
+			return XCTFail("expected message rendering")
+		}
+
+		assertThrowsMessage(
+			try CLIParser.parse(["remove"]),
+			"usage: wb remove <id> [<id> ...]"
+		)
+		assertThrowsMessage(
+			try CLIParser.parse(["remove", "--all", "deadbeef"]),
+			"cannot combine --all with browser IDs"
+		)
+		assertThrowsMessage(
+			try CLIParser.parse(["remove", "--bad"]),
+			"unknown remove option --bad"
+		)
+		assertThrowsMessage(
+			try CLIParser.parse(["close", "a1b2c3d4"]),
+			"unknown command close"
+		)
 	}
 
 	func testShowHideAndResizeCommands() throws {

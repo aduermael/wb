@@ -8,7 +8,7 @@ description: Use the installed wb CLI for persistent browser automation with com
 ## Principles
 
 - Use the installed `wb` command directly.
-- Browser IDs are persistent. Reuse the returned ID until the task is done, then close it when appropriate.
+- Browser IDs are persistent. Reuse the returned ID until the task is done, then remove it when appropriate.
 - When the URL is known, start with `wb <url>`; it creates the browser and returns its ID.
   Use `wb create` only for an empty browser before a URL is known.
 - Prefer fast commands. URL opens return after page HTML readiness while resources may keep loading.
@@ -27,7 +27,7 @@ id=$(wb https://example.com | jq -r '.browser')
 wb page "$id" --fields title,url,actions
 wb click "$id" 1
 wb page "$id" --fields title,url,text,actions
-wb close "$id"
+wb remove "$id"
 ```
 
 If a browser already exists, find or reuse it:
@@ -41,12 +41,13 @@ wb "$id" https://example.com
 
 - Start/load: `wb <url>` (new browser), `wb <id> <url>` (existing browser), `wb create` (empty browser only)
 - Wait: `wb wait-resources <id> [--resource-timeout <seconds>]`
-- Inspect: `wb list`, `wb page <id> [--fields ...] [--selectors|--action-details] [--resource-timeout ...]`
+- Inspect: `wb list [--quiet|-q]`, `wb page <id> [--fields ...]`
+  `[--selectors|--action-details] [--resource-timeout ...]`
 - Interact: `wb click`, `wb type`, `wb fill`, `wb submit`
 - Coordinates: `wb click <id> <x> <y>`, `wb press`, `wb drag`, `wb release`, `wb scroll`
 - View/capture: `wb show`, `wb hide`, `wb resize`, `wb screenshot`
 - Script: `wb eval`
-- Admin: `wb env`, `wb install-skill`, `wb update`, `wb version`, `wb daemon ...`, `wb close`
+- Admin: `wb env`, `wb install-skill`, `wb update`, `wb version`, `wb daemon ...`, `wb remove`
 
 ## Typing
 

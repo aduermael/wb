@@ -4,8 +4,8 @@ let cliParserTests = CLIParserTests()
 TestHarness.run("CLIParserTests.testEmptyArgumentsShowRootHelp") {
 	try cliParserTests.testEmptyArgumentsShowRootHelp()
 }
-TestHarness.run("CLIParserTests.testCreateListAndCloseCommands") {
-	try cliParserTests.testCreateListAndCloseCommands()
+TestHarness.run("CLIParserTests.testCreateListAndRemoveCommands") {
+	try cliParserTests.testCreateListAndRemoveCommands()
 }
 TestHarness.run("CLIParserTests.testShowHideAndResizeCommands") {
 	try cliParserTests.testShowHideAndResizeCommands()
@@ -46,6 +46,9 @@ TestHarness.run("PageFieldAndProtocolTests.testPageFieldListParsingTrimsAndDedup
 }
 TestHarness.run("PageFieldAndProtocolTests.testWireRequestBuilderAndRequiredValues") {
 	try pageFieldAndProtocolTests.testWireRequestBuilderAndRequiredValues()
+}
+TestHarness.run("PageFieldAndProtocolTests.testWireRequestBrowserRemovalTarget") {
+	try pageFieldAndProtocolTests.testWireRequestBrowserRemovalTarget()
 }
 TestHarness.run("PageFieldAndProtocolTests.testResourceTimeoutValidationAndWaitSemantics") {
 	try pageFieldAndProtocolTests.testResourceTimeoutValidationAndWaitSemantics()

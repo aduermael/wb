@@ -60,6 +60,13 @@ extension String {
 	}
 }
 
+extension Array where Element: Hashable {
+	func uniqued() -> [Element] {
+		var seen = Set<Element>()
+		return filter { seen.insert($0).inserted }
+	}
+}
+
 func printable(_ value: Any?) -> String {
 	guard let value else {
 		return "nil"

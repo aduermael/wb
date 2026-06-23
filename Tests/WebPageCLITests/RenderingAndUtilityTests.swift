@@ -149,6 +149,20 @@ struct RenderingAndUtilityTests {
 		XCTAssertEqual(
 			try renderedOutput(WireResponse.success().withBrowser("deadbeef"), mode: .browserID), "deadbeef"
 		)
+		XCTAssertEqual(
+			try renderedOutput(
+				WireResponse.success()
+					.withBrowsers([
+						makeBrowserSummary(browser: "0000000a"),
+						makeBrowserSummary(browser: "0000000b"),
+					]),
+				mode: .browserIDs
+			),
+			"0000000a\n0000000b"
+		)
+		XCTAssertNil(
+			try renderedOutput(WireResponse.success().withBrowsers([]), mode: .browserIDs)
+		)
 		XCTAssertEqual(try renderedOutput(WireResponse.success().withValue(nil), mode: .value), "")
 		XCTAssertEqual(try renderedOutput(WireResponse.success().withMessage(nil), mode: .message), "ok")
 		XCTAssertEqual(try renderedOutput(WireResponse.success(), mode: .daemonStart), "running")
@@ -169,4 +183,20 @@ private func jsonDictionary(_ rendered: String?) throws -> [String: Any] {
 		.unwrap("rendered output was not UTF-8")
 	let object = try JSONSerialization.jsonObject(with: data)
 	return try (object as? [String: Any]).unwrap("rendered output was not a JSON object")
+}
+
+private func makeBrowserSummary(browser: String) -> BrowserSummary {
+	BrowserSummary(
+		browser: browser,
+		title: nil,
+		url: nil,
+		loading: false,
+		progress: 1,
+		actions: 0,
+		visible: nil,
+		createdAt: "2024-01-01T00:00:00Z",
+		updatedAt: "2024-01-01T00:00:00Z",
+		dumped: nil,
+		dumpedAt: nil
+	)
 }

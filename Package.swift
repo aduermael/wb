@@ -18,6 +18,15 @@ var targets: [Target] = [
 		path: "Tools/WBLint"
 	),
 	.executableTarget(
+		name: "EmbeddedSkillGenerator",
+		path: "Tools/EmbeddedSkillGenerator"
+	),
+	.plugin(
+		name: "EmbeddedSkillPlugin",
+		capability: .buildTool(),
+		dependencies: ["EmbeddedSkillGenerator"]
+	),
+	.executableTarget(
 		name: "WBLintCoreTestRunner",
 		dependencies: ["WBLintCore"],
 		path: "Tests/WBLintCoreTests"
@@ -34,7 +43,10 @@ var targets: [Target] = [
 
 	targets.insert(
 		contentsOf: [
-			.target(name: "WebPageCLI"),
+			.target(
+				name: "WebPageCLI",
+				plugins: ["EmbeddedSkillPlugin"]
+			),
 			.executableTarget(
 				name: "WBExecutable",
 				dependencies: ["WebPageCLI"],

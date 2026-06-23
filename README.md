@@ -214,8 +214,9 @@ Use `wb page --help` to see filterable fields. Use `wb page <id> --fields title,
 - `wb version`: print the CLI version.
 - `wb <url> [--wait-resources] [--resource-timeout <seconds>]`: create a browser, load the page, and print a compact summary. By default this returns after page HTML readiness. Use resource flags only when the initial response must wait for scripts, styles, images, and fetches; `--resource-timeout` implies `--wait-resources`; max 100 seconds.
 - `wb <id> <url> [--wait-resources] [--resource-timeout <seconds>]`: load a page in an existing browser. By default this returns after page HTML readiness. Use resource flags only when the initial response must wait for scripts, styles, images, and fetches; `--resource-timeout` implies `--wait-resources`; max 100 seconds.
-- `wb list`: print active and saved browser summaries as compact JSON.
-- `wb close <id>`: close an active browser and delete any saved session for that ID.
+- `wb list [--quiet|-q]`: print active and saved browser summaries as compact JSON, or only browser IDs with `--quiet`/`-q`.
+- `wb remove <id> [<id> ...]`: remove active browsers and delete any saved sessions for those IDs.
+- `wb remove --all`: remove every active and saved browser.
 - `wb show <id>`: show a lightweight browser window for the browser.
 - `wb hide <id>`: hide the browser window without closing the browser.
 - `wb resize <id> [<width> <height>]`: resize the browser window, or reset it to 800x600 when no size is provided.

@@ -48,6 +48,10 @@ func renderedOutput(_ response: WireResponse, mode: RenderMode) throws -> String
 	case .browserID:
 		return try response.browser.unwrap("daemon did not return a browser id")
 
+	case .browserIDs:
+		let ids = (response.browsers ?? []).map(\.browser)
+		return ids.isEmpty ? nil : ids.joined(separator: "\n")
+
 	case .browsers:
 		return try compactJSONString(response.browsers ?? [])
 

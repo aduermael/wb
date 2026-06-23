@@ -2,7 +2,7 @@
 
 ## Operational Notes
 
-Browsers persist between commands and are autosaved after creation, navigation, interactions, and JavaScript evaluation. Use `wb list` to find browser IDs, `wb page <id>` to inspect the current page, and `wb close <id>` when you are done.
+Browsers persist between commands and are autosaved after creation, navigation, interactions, and JavaScript evaluation. Use `wb list` to find browser IDs, `wb page <id>` to inspect the current page, and `wb remove <id>` when you are done.
 
 If the URL is known, start with `wb <url>` rather than `wb create` followed by `wb <id> <url>`; the open command creates a new browser when no ID is supplied and includes the new ID in its JSON summary. Use `wb create` only for an empty browser before the URL is known.
 

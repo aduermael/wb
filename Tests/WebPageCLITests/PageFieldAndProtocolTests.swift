@@ -60,6 +60,38 @@ struct PageFieldAndProtocolTests {
 		assertThrowsMessage(try WireRequest(command: .click).requiredAction(), "missing action number or ID")
 	}
 
+	func testWireRequestBrowserRemovalTarget() throws {
+		XCTAssertEqual(
+			try WireRequest(command: .browserRemove)
+				.withBrowsers(["0000000a", "0000000b"])
+				.browserRemovalTarget(),
+			.ids(["0000000a", "0000000b"])
+		)
+		XCTAssertEqual(
+			try WireRequest(command: .browserRemove)
+				.withAllBrowsers(true)
+				.browserRemovalTarget(),
+			.all
+		)
+		XCTAssertEqual(
+			try WireRequest(command: .browserRemove)
+				.withBrowser("0000000a")
+				.browserRemovalTarget(),
+			.ids(["0000000a"])
+		)
+		assertThrowsMessage(
+			try WireRequest(command: .browserRemove).browserRemovalTarget(),
+			"missing browser id"
+		)
+		assertThrowsMessage(
+			try WireRequest(command: .browserRemove)
+				.withBrowser("0000000a")
+				.withAllBrowsers(true)
+				.browserRemovalTarget(),
+			"cannot combine --all with browser IDs"
+		)
+	}
+
 	func testResourceTimeoutValidationAndWaitSemantics() throws {
 		let defaultRequest = WireRequest(command: .open)
 		XCTAssertFalse(defaultRequest.waitsForResources())
