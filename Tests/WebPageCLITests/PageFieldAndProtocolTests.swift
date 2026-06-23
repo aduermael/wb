@@ -12,12 +12,9 @@ struct PageFieldAndProtocolTests {
 				+ "resourcesLoading,text,title,url"
 		)
 		XCTAssertEqual(try PageField.parseList(" title, url,actions,title "), [.title, .url, .actions])
-		XCTAssertEqual(
-			try PageField.parseList(" images, imageCount, resources "),
-			[.resources, .resourceCount]
-		)
 
 		assertThrowsMessage(try PageField.parseList(" ,, "), "--fields requires at least one field")
+		assertThrowsMessage(try PageField.parseList("images"), "unknown page field images")
 		assertThrowsMessage(try PageField.parseList("title,bogus"), "unknown page field bogus")
 	}
 
@@ -105,6 +102,9 @@ struct PageFieldAndProtocolTests {
 		try WireRequest(command: .page)
 			.withResourceLoading(waitForResources: false, timeout: nil)
 			.validateResourceLoading()
+		try WireRequest(command: .page)
+			.withResourceLoading(waitForResources: true, timeout: ResourceLoading.defaultTimeout)
+			.validateResourceLoading()
 		XCTAssertEqual(
 			try WireRequest(command: .screenshot)
 				.screenshotCaptureDelay(default: ScreenshotCapture.defaultDelay),
@@ -123,17 +123,14 @@ struct PageFieldAndProtocolTests {
 		XCTAssertEqual(decodedFalse.waitForResources, false)
 		try decodedFalse.validateResourceLoading()
 
-		assertThrowsMessage(
-			try WireRequest(command: .page)
-				.withResourceLoading(waitForResources: true, timeout: nil)
-				.validateResourceLoading(),
-			"resource loading options are only supported for open and screenshot commands"
-		)
+		try WireRequest(command: .waitResources)
+			.withResourceLoading(waitForResources: true, timeout: nil)
+			.validateResourceLoading()
 		assertThrowsMessage(
 			try WireRequest(command: .click)
 				.withResourceLoading(waitForResources: false, timeout: 1)
 				.validateResourceLoading(),
-			"resource loading options are only supported for open and screenshot commands"
+			"resource loading options are only supported for open, page, wait-resources, and screenshot commands"
 		)
 		assertThrowsMessage(
 			try WireRequest(command: .page)

@@ -10,7 +10,7 @@ func parseSkillInstallOptions(_ rawArguments: [String]) throws -> SkillInstallOp
 	while !arguments.isEmpty {
 		let argument = arguments.removeFirst()
 		switch argument {
-		case "--codex", "--agents", "--openai":
+		case "--codex":
 			options.targets.append(.codex)
 
 		case "--claude":
@@ -22,19 +22,15 @@ func parseSkillInstallOptions(_ rawArguments: [String]) throws -> SkillInstallOp
 		case "--all":
 			options.targets.append(contentsOf: SkillInstallTarget.allBuiltIn)
 
-		case "--auto-update-existing", "--update-existing":
+		case "--auto-update-existing":
 			options.mode = .updateExisting
 
-		case "--target", "--path":
+		case "--target":
 			let value = try popSkillInstallValue(from: &arguments, after: argument)
 			options.targets.append(try parseSkillInstallTarget(value))
 
 		case let option where option.hasPrefix("--target="):
 			let value = String(option.dropFirst("--target=".count))
-			options.targets.append(try parseSkillInstallTarget(value))
-
-		case let option where option.hasPrefix("--path="):
-			let value = String(option.dropFirst("--path=".count))
 			options.targets.append(try parseSkillInstallTarget(value))
 
 		case "--name":
@@ -70,7 +66,7 @@ private func parseSkillInstallTarget(_ rawValue: String) throws -> SkillInstallT
 	}
 
 	switch value {
-	case "codex", "agents", "openai":
+	case "codex":
 		return .codex
 	case "claude":
 		return .claude

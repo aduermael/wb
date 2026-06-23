@@ -45,6 +45,7 @@ The app target depends on AppKit and WebKit, so the full test suite runs on macO
 - Keep changes focused and explain the user-facing behavior they affect.
 - Include tests for parser, rendering, session, or browser behavior changes when practical.
 - Keep CLI JSON compact and stable. Prefer additive fields over breaking existing output.
+- Keep the command surface narrow and agent-oriented. Do not add command aliases, alternate long flags, or alternate value spellings; one canonical spelling plus one-character short flags such as `-h` is enough.
 - Update `README.md` or files under `docs/` when commands, install paths, or operational behavior change.
 
 ## License

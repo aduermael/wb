@@ -24,7 +24,7 @@ Usage:
   install-skill.sh --auto-update-existing
 
 Options:
-  --codex, --agents, --openai   Install .agents/skills/wb.
+  --codex                       Install .agents/skills/wb.
   --claude                      Install .claude/skills/wb.
   --grok                        Install .grok/skills/wb.
   --all                         Install all default agent targets.
@@ -41,7 +41,7 @@ add_target() {
 
 target_path() {
   case "$1" in
-    codex|agents|openai)
+    codex)
       printf '.agents/skills/%s\n' "$skill_name"
       ;;
     claude)
@@ -58,7 +58,7 @@ target_path() {
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --codex|--agents|--openai)
+    --codex)
       add_target codex
       ;;
     --claude)
@@ -70,7 +70,7 @@ while [ "$#" -gt 0 ]; do
     --all)
       targets="codex claude grok"
       ;;
-    --target|--path)
+    --target)
       shift
       if [ "$#" -eq 0 ]; then
         err "missing value after --target"
@@ -78,7 +78,7 @@ while [ "$#" -gt 0 ]; do
       fi
       add_target "$1"
       ;;
-    --target=*|--path=*)
+    --target=*)
       add_target "${1#*=}"
       ;;
     --name)
@@ -92,7 +92,7 @@ while [ "$#" -gt 0 ]; do
     --name=*)
       skill_name="${1#*=}"
       ;;
-    --auto-update-existing|--update-existing)
+    --auto-update-existing)
       mode=update-existing
       ;;
     --install-cli)

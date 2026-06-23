@@ -4,7 +4,7 @@
 import Foundation
 
 enum WireProtocol {
-	static let version = 38
+	static let version = 40
 }
 
 enum DaemonTiming {
@@ -13,6 +13,7 @@ enum DaemonTiming {
 
 enum ResourceLoading {
 	static let defaultTimeout: TimeInterval = 8
+	static let waitCommandDefaultTimeout: TimeInterval = 3
 	static let quietWindow: TimeInterval = 0.35
 	static let responseTimeoutHeadroom: TimeInterval = 20
 	static let maxTimeout = DaemonTiming.commandResponseTimeout - responseTimeoutHeadroom
@@ -133,7 +134,7 @@ enum TypingBackend: String, Codable, Equatable, Sendable {
 
 	static func parse(_ rawValue: String) throws -> TypingBackend {
 		switch rawValue.lowercased() {
-		case "js", "javascript":
+		case "js":
 			return .javaScript
 		case "native":
 			return .native
@@ -153,7 +154,7 @@ enum TypingRhythm: String, Codable, Equatable, Sendable {
 		switch rawValue.lowercased() {
 		case "flat":
 			return .flat
-		case "natural", "human":
+		case "natural":
 			return .natural
 		default:
 			throw WBError.message("unknown typing rhythm \(rawValue)")
@@ -193,6 +194,7 @@ enum WireCommand: String, Codable, Equatable, Sendable {
 	case browserHide
 	case browserResize
 	case open
+	case waitResources
 	case page
 	case click
 	case fill
@@ -438,10 +440,18 @@ struct WireRequest: Codable, Sendable {
 
 	func validateResourceLoading() throws {
 		let requestsResourceLoading = waitForResources == true || resourceTimeout != nil
-		if requestsResourceLoading && command != .open && command != .screenshot {
-			throw WBError.message(
-				"resource loading options are only supported for open and screenshot commands"
-			)
+		if requestsResourceLoading {
+			switch command {
+			case .open,
+				.page,
+				.waitResources,
+				.screenshot:
+				break
+			default:
+				throw WBError.message(
+					"resource loading options are only supported for open, page, wait-resources, and screenshot commands"
+				)
+			}
 		}
 		if let resourceTimeout {
 			_ = try ResourceLoading.validateTimeout(resourceTimeout)

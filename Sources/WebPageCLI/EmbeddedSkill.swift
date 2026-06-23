@@ -16,7 +16,9 @@ enum EmbeddedSkill {
 		- Use the installed `wb` command directly.
 		- Browser IDs are persistent. Reuse the returned ID until the task is done, then close it when appropriate.
 		- Prefer fast commands. URL opens return after page HTML readiness while resources may keep loading.
-		- Add `--wait-resources` or a short `--resource-timeout <seconds>` only when loaded resources matter.
+		- Do not add `--resource-timeout` to initial navigation as a precaution.
+		- Use `wb wait-resources <id>` when loaded resources matter after navigation.
+		- Use `wb page <id> --resource-timeout <seconds>` when page JSON should wait.
 		- After navigation, interaction, scroll, or rerender, refresh with `wb page <id>` before reusing actions.
 		- Run `wb --help` or `wb <command> --help` for exact syntax and advanced flags.
 
@@ -40,7 +42,8 @@ enum EmbeddedSkill {
 		## Command Map
 
 		- Start/load: `wb <url>`, `wb <id> <url>`
-		- Inspect: `wb list`, `wb page <id> [--fields ...] [--selectors|--action-details]`
+		- Wait: `wb wait-resources <id> [--resource-timeout <seconds>]`
+		- Inspect: `wb list`, `wb page <id> [--fields ...] [--selectors|--action-details] [--resource-timeout ...]`
 		- Interact: `wb click`, `wb type`, `wb fill`, `wb submit`
 		- Coordinates: `wb click <id> <x> <y>`, `wb press`, `wb drag`, `wb release`, `wb scroll`
 		- View/capture: `wb show`, `wb hide`, `wb resize`, `wb screenshot`
@@ -67,6 +70,7 @@ enum EmbeddedSkill {
 
 		```bash
 		wb page "$id" --fields title,url,actions
+		wb wait-resources "$id" --resource-timeout 3
 		wb page "$id" --fields title,url,resources
 		```
 

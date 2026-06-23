@@ -126,9 +126,28 @@ final class BrowserManager: @unchecked Sendable {
 				.withBrowser(browserState.browser.id)
 				.withPage(page)
 
+		case .waitResources:
+			let browser = try await requireBrowser(request.browser)
+			let page = try await browser.waitForResourcesSnapshot(
+				timeout: try request.resourceWaitTimeout(
+					default: ResourceLoading.waitCommandDefaultTimeout)
+			)
+			try ensureActive(browser, context: "wait-resources")
+			return WireResponse.success()
+				.withBrowser(browser.id)
+				.withPage(page)
+
 		case .page:
 			let browser = try await requireBrowser(request.browser)
-			let page = try await browser.snapshot()
+			let page: PageSnapshot
+			if request.waitsForResources() {
+				page = try await browser.waitForResourcesSnapshot(
+					timeout: try request.resourceWaitTimeout(
+						default: ResourceLoading.waitCommandDefaultTimeout)
+				)
+			} else {
+				page = try await browser.snapshot()
+			}
 			try ensureActive(browser, context: "page")
 			return WireResponse.success()
 				.withBrowser(browser.id)

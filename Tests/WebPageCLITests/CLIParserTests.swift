@@ -23,13 +23,13 @@ struct CLIParserTests {
 			return XCTFail("expected browser id rendering")
 		}
 
-		let list = try CLIParser.parse(["ls"])
+		let list = try CLIParser.parse(["list"])
 		XCTAssertEqual(list.request?.command, .browserList)
 		guard case .browsers = list.renderMode else {
 			return XCTFail("expected browsers rendering")
 		}
 
-		let close = try CLIParser.parse(["rm", "a1b2c3d4"])
+		let close = try CLIParser.parse(["close", "a1b2c3d4"])
 		XCTAssertEqual(close.request?.command, .browserClose)
 		XCTAssertEqual(close.request?.browser, "a1b2c3d4")
 		guard case .message = close.renderMode else {
@@ -120,6 +120,19 @@ struct CLIParserTests {
 		XCTAssertEqual(maxTimeout.request?.waitForResources, true)
 		XCTAssertEqual(maxTimeout.request?.resourceTimeout, ResourceLoading.maxTimeout)
 
+		let waitResources = try CLIParser.parse([
+			"wait-resources",
+			"deadbeef",
+			"--resource-timeout=2.5",
+		])
+		XCTAssertEqual(waitResources.request?.command, .waitResources)
+		XCTAssertEqual(waitResources.request?.browser, "deadbeef")
+		XCTAssertEqual(waitResources.request?.waitForResources, true)
+		XCTAssertEqual(waitResources.request?.resourceTimeout, 2.5)
+		guard case .pageSummary = waitResources.renderMode else {
+			return XCTFail("expected summary rendering")
+		}
+
 		assertThrowsMessage(
 			try CLIParser.parse(["not-an-id", "https://example.com"]), "unknown command not-an-id")
 		assertThrowsMessage(try CLIParser.parse(["--bad"]), "unknown command --bad")
@@ -139,6 +152,10 @@ struct CLIParserTests {
 			]),
 			"exceeds maximum 100"
 		)
+		assertThrowsMessage(
+			try CLIParser.parse(["wait-resources", "deadbeef", "--wait-resources"]),
+			"unexpected wait-resources argument --wait-resources"
+		)
 	}
 
 	func testPageOptionsCanAppearBeforeBrowserId() throws {
@@ -152,6 +169,8 @@ struct CLIParserTests {
 
 		XCTAssertEqual(invocation.request?.command, .page)
 		XCTAssertEqual(invocation.request?.browser, "deadbeef")
+		XCTAssertNil(invocation.request?.waitForResources)
+		XCTAssertNil(invocation.request?.resourceTimeout)
 		guard case .page(let options) = invocation.renderMode else {
 			return XCTFail("expected page rendering")
 		}
@@ -159,16 +178,27 @@ struct CLIParserTests {
 		XCTAssertTrue(options.includeActionSelectors)
 		XCTAssertEqual(options.fields, [.title, .url, .actions])
 
-		let legacyAliases = try CLIParser.parse([
+		assertThrowsMessage(
+			try CLIParser.parse(["page", "--fields", "images,imageCount", "deadbeef"]),
+			"unknown page field images"
+		)
+
+		let waitForResources = try CLIParser.parse([
 			"page",
-			"--fields",
-			"images,imageCount",
 			"deadbeef",
+			"--resource-timeout",
+			"3",
+			"--fields",
+			"title,resourcesLoading",
 		])
-		guard case .page(let legacyOptions) = legacyAliases.renderMode else {
+		XCTAssertEqual(waitForResources.request?.command, .page)
+		XCTAssertEqual(waitForResources.request?.browser, "deadbeef")
+		XCTAssertEqual(waitForResources.request?.waitForResources, true)
+		XCTAssertEqual(waitForResources.request?.resourceTimeout, 3)
+		guard case .page(let waitOptions) = waitForResources.renderMode else {
 			return XCTFail("expected page rendering")
 		}
-		XCTAssertEqual(legacyOptions.fields, [.resources, .resourceCount])
+		XCTAssertEqual(waitOptions.fields, [.title, .resourcesLoading])
 	}
 
 	func testClickFillSubmitAndEvalCommands() throws {
@@ -210,17 +240,6 @@ struct CLIParserTests {
 		XCTAssertEqual(type.request?.typingBackend, .native)
 		XCTAssertEqual(type.request?.typingRhythm, .natural)
 		XCTAssertEqual(type.request?.typingSpeed, 3.5)
-
-		let typeAliasOptions = try CLIParser.parse([
-			"type",
-			"deadbeef",
-			"search",
-			"value",
-			"--native",
-			"--natural",
-		])
-		XCTAssertEqual(typeAliasOptions.request?.typingBackend, .native)
-		XCTAssertEqual(typeAliasOptions.request?.typingRhythm, .natural)
 
 		let typeMinOnly = try CLIParser.parse([
 			"type",

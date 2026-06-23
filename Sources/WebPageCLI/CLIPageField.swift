@@ -34,22 +34,11 @@ enum PageField: String, CaseIterable, Hashable {
 
 		var fields: Set<PageField> = []
 		for name in names {
-			guard let field = PageField(rawValue: canonicalName(for: name)) else {
+			guard let field = PageField(rawValue: name) else {
 				throw WBError.message("unknown page field \(name); valid fields: \(validList)")
 			}
 			fields.insert(field)
 		}
 		return fields
-	}
-
-	private static func canonicalName(for name: String) -> String {
-		switch name {
-		case "images":
-			return PageField.resources.rawValue
-		case "imageCount":
-			return PageField.resourceCount.rawValue
-		default:
-			return name
-		}
 	}
 }

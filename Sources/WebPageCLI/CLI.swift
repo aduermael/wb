@@ -74,6 +74,7 @@ enum HelpTopic {
 	case hide
 	case resize
 	case screenshot
+	case waitResources
 	case page
 	case click
 	case press
@@ -123,10 +124,7 @@ struct CLIParser {
 		arguments.removeFirst()
 
 		switch command {
-		case "help":
-			return try parseHelpCommand(arguments)
-
-		case "env", "environment":
+		case "env":
 			if arguments.containsHelpFlag {
 				return help(.environment)
 			}
@@ -173,7 +171,7 @@ struct CLIParser {
 				daemon: .enabled
 			)
 
-		case "list", "ls":
+		case "list":
 			if arguments.containsHelpFlag {
 				return help(.list)
 			}
@@ -186,7 +184,7 @@ struct CLIParser {
 				daemon: .enabled
 			)
 
-		case "close", "delete", "rm":
+		case "close":
 			if arguments.containsHelpFlag {
 				return help(.close)
 			}
@@ -270,7 +268,7 @@ struct CLIParser {
 				return help(.screenshot)
 			}
 			var arguments = arguments
-			let resourceOptions = try parseResourceLoadingOptions(&arguments)
+			let resourceTimeout = try parseResourceTimeoutOption(&arguments)
 			let captureDelay = try parseScreenshotCaptureDelayOption(&arguments)
 			let screenshotUsage = [
 				"usage: wb screenshot <id> <destination.png|destination.jpg>",
@@ -290,9 +288,30 @@ struct CLIParser {
 				request: WireRequest(command: .screenshot)
 					.withBrowser(id)
 					.withDestinationPath(absolutePath(for: destination))
-					.withResourceLoading(waitForResources: true, timeout: resourceOptions.timeout)
+					.withResourceLoading(waitForResources: true, timeout: resourceTimeout)
 					.withScreenshotDelay(captureDelay),
 				renderMode: .message,
+				daemon: .enabled
+			)
+
+		case "wait-resources":
+			if arguments.containsHelpFlag {
+				return help(.waitResources)
+			}
+			var arguments = arguments
+			let resourceTimeout = try parseResourceTimeoutOption(&arguments)
+			let id = try popBrowserID(
+				from: &arguments,
+				usage: "usage: wb wait-resources <id> [--resource-timeout <seconds>]"
+			)
+			guard arguments.isEmpty else {
+				throw WBError.message("unexpected wait-resources argument \(arguments[0])")
+			}
+			return CLIInvocation(
+				request: WireRequest(command: .waitResources)
+					.withBrowser(id)
+					.withResourceLoading(waitForResources: true, timeout: resourceTimeout),
+				renderMode: .pageSummary,
 				daemon: .enabled
 			)
 
@@ -305,15 +324,26 @@ struct CLIParser {
 			}
 			var arguments = arguments
 			let pageOptions = try parsePageOutputOptions(&arguments)
+			let resourceTimeout = try parseResourceTimeoutOption(&arguments)
 			let id = try popBrowserID(
 				from: &arguments,
-				usage: "usage: wb page <id> [--fields <list>] [--selectors|--action-details]"
+				usage: [
+					"usage: wb page <id> [--fields <list>] [--selectors|--action-details]",
+					"[--resource-timeout <seconds>]",
+				].joined(separator: " ")
 			)
 			guard arguments.isEmpty else {
 				throw WBError.message("unknown page option \(arguments[0])")
 			}
+			var request = WireRequest(command: .page).withBrowser(id)
+			if let resourceTimeout {
+				request = request.withResourceLoading(
+					waitForResources: true,
+					timeout: resourceTimeout
+				)
+			}
 			return CLIInvocation(
-				request: WireRequest(command: .page).withBrowser(id),
+				request: request,
 				renderMode: .page(pageOptions),
 				daemon: .enabled
 			)
@@ -536,79 +566,6 @@ struct CLIParser {
 		CLIInvocation(request: nil, renderMode: .help(topic), daemon: .disabled)
 	}
 
-	private static func parseHelpCommand(_ arguments: [String]) throws -> CLIInvocation {
-		var arguments = arguments
-		guard let command = arguments.first else {
-			return help(.root)
-		}
-		arguments.removeFirst()
-
-		if command == "daemon" {
-			guard let daemonCommand = arguments.first else {
-				return help(.daemon)
-			}
-			switch daemonCommand {
-			case "start":
-				return help(.daemonStart)
-			case "status":
-				return help(.daemonStatus)
-			case "stop":
-				return help(.daemonStop)
-			case "log", "logs", "log-path":
-				return help(.daemonLog)
-			default:
-				throw WBError.message("unknown daemon command \(daemonCommand)")
-			}
-		}
-
-		switch command {
-		case "env", "environment":
-			return help(.environment)
-		case "install-skill":
-			return help(.installSkill)
-		case "update":
-			return help(.update)
-		case "version":
-			return help(.version)
-		case "create":
-			return help(.create)
-		case "list", "ls":
-			return help(.list)
-		case "close", "delete", "rm":
-			return help(.close)
-		case "show":
-			return help(.show)
-		case "hide":
-			return help(.hide)
-		case "resize":
-			return help(.resize)
-		case "screenshot":
-			return help(.screenshot)
-		case "page":
-			return help(.page)
-		case "click":
-			return help(.click)
-		case "press":
-			return help(.press)
-		case "drag":
-			return help(.drag)
-		case "release":
-			return help(.release)
-		case "scroll":
-			return help(.scroll)
-		case "fill":
-			return help(.fill)
-		case "type":
-			return help(.type)
-		case "submit":
-			return help(.submit)
-		case "eval":
-			return help(.eval)
-		default:
-			throw WBError.message("unknown help topic \(command)")
-		}
-	}
-
 	private static func popBrowserID(
 		from arguments: inout [String],
 		usage: String
@@ -717,7 +674,7 @@ struct CLIParser {
 				daemon: .disabled
 			)
 
-		case "log", "logs", "log-path":
+		case "log":
 			let arguments = Array(arguments.dropFirst())
 			if arguments.containsHelpFlag {
 				return help(.daemonLog)
@@ -813,23 +770,19 @@ private func parsePageOutputOptions(_ arguments: inout [String]) throws -> PageO
 	while !arguments.isEmpty {
 		let argument = arguments.removeFirst()
 		switch argument {
-		case "--selectors", "--selector":
+		case "--selectors":
 			options.includeActionSelectors = true
 
-		case "--action-details", "--details", "--verbose":
+		case "--action-details":
 			options.includeActionDetails = true
 			options.includeActionSelectors = true
 
-		case "--fields", "--field":
+		case "--fields":
 			let rawFields = try arguments.popFirst("missing value after \(argument)")
 			options.fields = try PageField.parseList(rawFields)
 
 		case let option where option.hasPrefix("--fields="):
 			let rawFields = String(option.dropFirst("--fields=".count))
-			options.fields = try PageField.parseList(rawFields)
-
-		case let option where option.hasPrefix("--field="):
-			let rawFields = String(option.dropFirst("--field=".count))
 			options.fields = try PageField.parseList(rawFields)
 
 		default:
@@ -846,40 +799,65 @@ private struct ResourceLoadingOptions {
 	var timeout: TimeInterval?
 }
 
+private func parseResourceTimeoutOption(_ arguments: inout [String]) throws -> TimeInterval? {
+	var timeout: TimeInterval?
+	var remaining: [String] = []
+
+	while !arguments.isEmpty {
+		let argument = arguments.removeFirst()
+		if let parsed = try parseResourceTimeoutArgument(argument, arguments: &arguments) {
+			timeout = parsed
+		} else {
+			remaining.append(argument)
+		}
+	}
+
+	arguments = remaining
+	return timeout
+}
+
 private func parseResourceLoadingOptions(_ arguments: inout [String]) throws -> ResourceLoadingOptions {
 	var options = ResourceLoadingOptions()
 	var remaining: [String] = []
 
 	while !arguments.isEmpty {
 		let argument = arguments.removeFirst()
-		let rawTimeout: String?
 
 		switch argument {
-		case "--wait-resources", "--wait-for-resources":
+		case "--wait-resources":
 			options.waitForResources = true
 			continue
 
-		case "--resource-timeout", "--resources-timeout":
-			rawTimeout = try arguments.popFirst("missing value after \(argument)")
-
-		case let option where option.hasPrefix("--resource-timeout="):
-			rawTimeout = String(option.dropFirst("--resource-timeout=".count))
-
-		case let option where option.hasPrefix("--resources-timeout="):
-			rawTimeout = String(option.dropFirst("--resources-timeout=".count))
-
 		default:
-			remaining.append(argument)
-			continue
+			if let timeout = try parseResourceTimeoutArgument(argument, arguments: &arguments) {
+				options.timeout = timeout
+				options.waitForResources = true
+			} else {
+				remaining.append(argument)
+			}
 		}
-
-		let timeout = try ResourceLoading.parseTimeout(rawTimeout ?? "")
-		options.timeout = timeout
-		options.waitForResources = true
 	}
 
 	arguments = remaining
 	return options
+}
+
+private func parseResourceTimeoutArgument(
+	_ argument: String,
+	arguments: inout [String]
+) throws -> TimeInterval? {
+	switch argument {
+	case "--resource-timeout":
+		return try ResourceLoading.parseTimeout(
+			arguments.popFirst("missing value after \(argument)"))
+
+	case let option where option.hasPrefix("--resource-timeout="):
+		return try ResourceLoading.parseTimeout(
+			String(option.dropFirst("--resource-timeout=".count)))
+
+	default:
+		return nil
+	}
 }
 
 private func parseScreenshotCaptureDelayOption(_ arguments: inout [String]) throws -> TimeInterval? {
@@ -891,14 +869,11 @@ private func parseScreenshotCaptureDelayOption(_ arguments: inout [String]) thro
 		let rawDelay: String?
 
 		switch argument {
-		case "--capture-delay", "--screenshot-delay":
+		case "--capture-delay":
 			rawDelay = try arguments.popFirst("missing value after \(argument)")
 
 		case let option where option.hasPrefix("--capture-delay="):
 			rawDelay = String(option.dropFirst("--capture-delay=".count))
-
-		case let option where option.hasPrefix("--screenshot-delay="):
-			rawDelay = String(option.dropFirst("--screenshot-delay=".count))
 
 		default:
 			remaining.append(argument)

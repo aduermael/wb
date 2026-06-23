@@ -24,8 +24,10 @@ func printHelp(_ topic: HelpTopic) {
 			  wb resize <id> [<width> <height>]
 			  wb screenshot <id> <destination.png|destination.jpg> [--resource-timeout <seconds>]
 			    [--capture-delay <seconds>]
+			  wb wait-resources <id> [--resource-timeout <seconds>]
 
 			  wb page <id> [--fields <list>] [--selectors|--action-details]
+			    [--resource-timeout <seconds>]
 			  wb click <id> <action>
 			  wb click <id> <x> <y>
 			  wb press <id> <x> <y>
@@ -47,8 +49,8 @@ func printHelp(_ topic: HelpTopic) {
 			Notes:
 			  - Browsers persist between commands; use wb list to see saved IDs.
 			  - JSON output is compact; fields with default values are omitted.
-			  - URL opens return after page HTML is ready; use --wait-resources
-			    or --resource-timeout to wait for scripts, styles, images, and fetches.
+			  - URL opens return after page HTML is ready. Use wait-resources after
+			    navigation when scripts, styles, images, and fetches matter.
 			  - --resource-timeout accepts 0-\(Int(ResourceLoading.maxTimeout)) seconds.
 			  - Run 'wb <command> --help' for command details.
 			""")
@@ -189,11 +191,28 @@ func printHelp(_ topic: HelpTopic) {
 			                                  \(Int(ScreenshotCapture.maxDelay)) seconds. Use 0 to disable.
 			""")
 
+	case .waitResources:
+		print(
+			"""
+			Usage:
+			  wb wait-resources <id> [--resource-timeout <seconds>]
+
+			Waits for the current page's resources to become quiet, then prints a compact
+			page summary. Timeout is not a command failure; inspect resourcesLoading in the
+			summary to see whether the page settled.
+
+			Options:
+			  --resource-timeout <seconds>    Resource wait timeout; default
+			                                  \(Int(ResourceLoading.waitCommandDefaultTimeout)) seconds,
+			                                  max \(Int(ResourceLoading.maxTimeout)) seconds.
+			""")
+
 	case .page:
 		print(
 			"""
 			Usage:
 			  wb page <id> [--fields <list>] [--selectors|--action-details]
+			    [--resource-timeout <seconds>]
 
 			Prints visible page text, page metadata, and actionable elements.
 
@@ -201,8 +220,11 @@ func printHelp(_ topic: HelpTopic) {
 			  --fields <list>       Comma-separated fields: \(PageField.validList)
 			  --selectors           Include action CSS selectors.
 			  --action-details      Include action id, tag, type, and selector.
+			  --resource-timeout <seconds>
+			                         Wait for resources before printing page JSON.
 
 			Notes:
+			  - Without --resource-timeout, page returns immediately.
 			  - Default actions include index, kind, text, href, and disabled state.
 			  - Resource entries include index, type, and URL. The resources list is capped
 			    at 250 entries; resourceCount reports the total discovered resources.

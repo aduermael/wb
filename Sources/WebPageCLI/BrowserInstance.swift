@@ -86,6 +86,15 @@ final class BrowserInstance {
 		return try await snapshot(fallbackURL: fallbackURL, lifecycleGeneration: generation)
 	}
 
+	func waitForResourcesSnapshot(timeout: TimeInterval) async throws -> PageSnapshot {
+		let generation = try lifecycleToken()
+		guard page.url != nil else {
+			throw WBError.message("browser has no loaded page")
+		}
+		try await waitForResources(timeout: timeout, lifecycleGeneration: generation)
+		return try await snapshot(lifecycleGeneration: generation)
+	}
+
 	func bestEffortSnapshot(fallbackURL: String? = nil) async -> PageSnapshot {
 		guard !isClosed else {
 			return closedSnapshot(fallbackURL: fallbackURL)

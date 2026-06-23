@@ -197,7 +197,7 @@ In this checkout, `.agents/skills/wb`, `.claude/skills/wb`, and `.grok/skills/wb
 
 `wb` keeps structured CLI JSON compact by default. JSON is emitted on one line and omits fields with default values. Error responses preserve `ok:false`. Raw `eval` results are printed as returned strings.
 
-Commands avoid returning a full page snapshot unless explicitly asked. Use `wb <url>` or `wb <id> <url>` for a compact summary containing the browser ID, title, URL, page/resource loading status, action count, resource count, full-document HTML byte count, and default page JSON byte count. Use `wb page <id>` when you need visible text, the full action list, and loaded resource URLs.
+Commands avoid returning a full page snapshot unless explicitly asked. Use `wb <url>` or `wb <id> <url>` for a compact summary containing the browser ID, title, URL, page/resource loading status, action count, resource count, full-document HTML byte count, and default page JSON byte count. Use `wb wait-resources <id>` or `wb page <id> --resource-timeout <seconds>` after navigation only when loaded resources matter. Use `wb page <id>` when you need visible text, the full action list, and loaded resource URLs.
 
 Browser IDs are random 8-character lowercase hex strings. Page snapshot text is markdown-like and includes inline links where possible. Page actions are compact by default and include a 1-based `index` for `click`, `type`, `fill`, and `submit`; internal IDs, CSS selectors, and tags are omitted unless requested. Resource entries include a 1-based `index`, `type`, and resolved URL. The `resources` array is capped at 250 entries to keep output bounded, while `resourceCount` reports the total discovered resources. Use `wb page <id> --action-details` to include internal action IDs, or `wb page <id> --selectors` to include CSS selectors.
 
@@ -212,15 +212,16 @@ Use `wb page --help` to see filterable fields. Use `wb page <id> --fields title,
 - `wb install-skill [--codex] [--claude] [--grok] [--all]`: install the embedded agent skill.
 - `wb update`: update the CLI to the latest release.
 - `wb version`: print the CLI version.
-- `wb <url> [--wait-resources] [--resource-timeout <seconds>]`: create a browser, load the page, and print a compact summary. `--resource-timeout` implies `--wait-resources`; max 100 seconds.
-- `wb <id> <url> [--wait-resources] [--resource-timeout <seconds>]`: load a page in an existing browser. `--resource-timeout` implies `--wait-resources`; max 100 seconds.
+- `wb <url> [--wait-resources] [--resource-timeout <seconds>]`: create a browser, load the page, and print a compact summary. By default this returns after page HTML readiness. Use resource flags only when the initial response must wait for scripts, styles, images, and fetches; `--resource-timeout` implies `--wait-resources`; max 100 seconds.
+- `wb <id> <url> [--wait-resources] [--resource-timeout <seconds>]`: load a page in an existing browser. By default this returns after page HTML readiness. Use resource flags only when the initial response must wait for scripts, styles, images, and fetches; `--resource-timeout` implies `--wait-resources`; max 100 seconds.
 - `wb list`: print active and saved browser summaries as compact JSON.
 - `wb close <id>`: close an active browser and delete any saved session for that ID.
 - `wb show <id>`: show a lightweight browser window for the browser.
 - `wb hide <id>`: hide the browser window without closing the browser.
 - `wb resize <id> [<width> <height>]`: resize the browser window, or reset it to 800x600 when no size is provided.
 - `wb screenshot <id> <destination.png|destination.jpg> [--resource-timeout <seconds>] [--capture-delay <seconds>]`: wait for resources, pause briefly for visual settling, then capture the current browser viewport as PNG or JPEG. `--resource-timeout` is capped at 100 seconds; `--capture-delay` defaults to 0.3 seconds and accepts 0 to disable.
-- `wb page <id> [--fields <list>] [--selectors|--action-details]`: refresh and print page JSON, including visible actions and loaded resource URLs.
+- `wb wait-resources <id> [--resource-timeout <seconds>]`: wait for the current page's resources to become quiet, then print a compact summary. Timeout is not a command failure; inspect `resourcesLoading` to see whether the page settled. The default timeout is 3 seconds.
+- `wb page <id> [--fields <list>] [--selectors|--action-details] [--resource-timeout <seconds>]`: refresh and print page JSON, including visible actions and loaded resource URLs. Without `--resource-timeout`, this returns immediately.
 - `wb click <id> <action>`: click an action from the latest page/action list and print a compact summary.
 - `wb click <id> <x> <y>`: click the current viewport coordinate without opening a window.
 - `wb press <id> <x> <y>`: send a page mouse-down event at a viewport coordinate.

@@ -18,81 +18,40 @@ func parseTypingOptions(_ arguments: inout [String]) throws -> TypingOptions {
 		let argument = arguments.removeFirst()
 
 		switch argument {
-		case "--delay-min", "--min-delay", "--typing-delay-min":
+		case "--delay-min":
 			let rawDelay = try popTypingOptionValue(from: &arguments, after: argument)
 			options.min = try TypingDelay.parse(rawDelay)
 
 		case let option where option.hasPrefix("--delay-min="):
 			options.min = try TypingDelay.parse(String(option.dropFirst("--delay-min=".count)))
 
-		case let option where option.hasPrefix("--min-delay="):
-			options.min = try TypingDelay.parse(String(option.dropFirst("--min-delay=".count)))
-
-		case let option where option.hasPrefix("--typing-delay-min="):
-			options.min = try TypingDelay.parse(String(option.dropFirst("--typing-delay-min=".count)))
-
-		case "--delay-max", "--max-delay", "--typing-delay-max":
+		case "--delay-max":
 			let rawDelay = try popTypingOptionValue(from: &arguments, after: argument)
 			options.max = try TypingDelay.parse(rawDelay)
 
 		case let option where option.hasPrefix("--delay-max="):
 			options.max = try TypingDelay.parse(String(option.dropFirst("--delay-max=".count)))
 
-		case let option where option.hasPrefix("--max-delay="):
-			options.max = try TypingDelay.parse(String(option.dropFirst("--max-delay=".count)))
-
-		case let option where option.hasPrefix("--typing-delay-max="):
-			options.max = try TypingDelay.parse(String(option.dropFirst("--typing-delay-max=".count)))
-
-		case "--speed", "--typing-speed", "--type-speed":
+		case "--speed":
 			let rawSpeed = try popTypingOptionValue(from: &arguments, after: argument)
 			options.speed = try TypingSpeed.parse(rawSpeed)
 
 		case let option where option.hasPrefix("--speed="):
 			options.speed = try TypingSpeed.parse(String(option.dropFirst("--speed=".count)))
 
-		case let option where option.hasPrefix("--typing-speed="):
-			options.speed = try TypingSpeed.parse(String(option.dropFirst("--typing-speed=".count)))
-
-		case let option where option.hasPrefix("--type-speed="):
-			options.speed = try TypingSpeed.parse(String(option.dropFirst("--type-speed=".count)))
-
-		case "--backend", "--typing-backend", "--type-backend":
+		case "--backend":
 			let rawBackend = try popTypingOptionValue(from: &arguments, after: argument)
 			options.backend = try TypingBackend.parse(rawBackend)
 
 		case let option where option.hasPrefix("--backend="):
 			options.backend = try TypingBackend.parse(String(option.dropFirst("--backend=".count)))
 
-		case let option where option.hasPrefix("--typing-backend="):
-			options.backend = try TypingBackend.parse(
-				String(option.dropFirst("--typing-backend=".count)))
-
-		case let option where option.hasPrefix("--type-backend="):
-			options.backend = try TypingBackend.parse(String(option.dropFirst("--type-backend=".count)))
-
-		case "--native":
-			options.backend = .native
-
-		case "--rhythm", "--typing-rhythm", "--type-rhythm":
+		case "--rhythm":
 			let rawRhythm = try popTypingOptionValue(from: &arguments, after: argument)
 			options.rhythm = try TypingRhythm.parse(rawRhythm)
 
 		case let option where option.hasPrefix("--rhythm="):
 			options.rhythm = try TypingRhythm.parse(String(option.dropFirst("--rhythm=".count)))
-
-		case let option where option.hasPrefix("--typing-rhythm="):
-			options.rhythm = try TypingRhythm.parse(
-				String(option.dropFirst("--typing-rhythm=".count)))
-
-		case let option where option.hasPrefix("--type-rhythm="):
-			options.rhythm = try TypingRhythm.parse(String(option.dropFirst("--type-rhythm=".count)))
-
-		case "--natural":
-			options.rhythm = .natural
-
-		case "--flat":
-			options.rhythm = .flat
 
 		default:
 			remaining.append(argument)
