@@ -15,6 +15,8 @@ enum EmbeddedSkill {
 
 		- Use the installed `wb` command directly.
 		- Browser IDs are persistent. Reuse the returned ID until the task is done, then close it when appropriate.
+		- When the URL is known, start with `wb <url>`; it creates the browser and returns its ID.
+		  Use `wb create` only for an empty browser before a URL is known.
 		- Prefer fast commands. URL opens return after page HTML readiness while resources may keep loading.
 		- Do not add `--resource-timeout` to initial navigation as a precaution.
 		- Use `wb wait-resources <id>` when loaded resources matter after navigation.
@@ -23,6 +25,8 @@ enum EmbeddedSkill {
 		- Run `wb --help` or `wb <command> --help` for exact syntax and advanced flags.
 
 		## Core Workflow
+
+		Start from a known URL in one command:
 
 		```bash
 		id=$(wb https://example.com | jq -r '.browser')
@@ -41,7 +45,7 @@ enum EmbeddedSkill {
 
 		## Command Map
 
-		- Start/load: `wb <url>`, `wb <id> <url>`
+		- Start/load: `wb <url>` (new browser), `wb <id> <url>` (existing browser), `wb create` (empty browser only)
 		- Wait: `wb wait-resources <id> [--resource-timeout <seconds>]`
 		- Inspect: `wb list`, `wb page <id> [--fields ...] [--selectors|--action-details] [--resource-timeout ...]`
 		- Interact: `wb click`, `wb type`, `wb fill`, `wb submit`

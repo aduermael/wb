@@ -207,7 +207,7 @@ Use `wb page --help` to see filterable fields. Use `wb page <id> --fields title,
 
 ## ⌨️ Commands
 
-- `wb create`: create an empty browser and print its ID.
+- `wb create`: create an empty browser and print its ID. Use this only when you need an ID before you know the URL; otherwise `wb <url>` creates and loads a new browser in one command.
 - `wb env`: print public metadata for the current `.wb` environment.
 - `wb install-skill [--codex] [--claude] [--grok] [--all]`: install the embedded agent skill.
 - `wb update`: update the CLI to the latest release.

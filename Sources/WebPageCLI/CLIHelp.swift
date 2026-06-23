@@ -122,6 +122,10 @@ func printHelp(_ topic: HelpTopic) {
 			  wb create
 
 			Creates an empty browser and prints its ID.
+
+			If you already know the URL, use wb <url> instead. It creates a
+			new browser, loads the page, and returns the browser ID in the JSON
+			summary, so wb create followed by wb <id> <url> is unnecessary.
 			""")
 
 	case .list:
