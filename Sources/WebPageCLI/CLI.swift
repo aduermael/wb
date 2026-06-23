@@ -424,7 +424,8 @@ struct CLIParser {
 			let typingOptions = try parseTypingOptions(&arguments)
 			let usage =
 				"usage: wb type <id> <action> <text> [--backend js|native] "
-				+ "[--rhythm flat|natural] [--delay-min <seconds>] [--delay-max <seconds>]"
+				+ "[--rhythm flat|natural] [--speed <factor>] "
+				+ "[--delay-min <seconds>] [--delay-max <seconds>]"
 			let id = try popBrowserID(
 				from: &arguments,
 				usage: usage
@@ -438,7 +439,8 @@ struct CLIParser {
 					.withValue(value)
 					.withTypingDelays(min: typingOptions.min, max: typingOptions.max)
 					.withTypingBackend(typingOptions.backend)
-					.withTypingRhythm(typingOptions.rhythm),
+					.withTypingRhythm(typingOptions.rhythm)
+					.withTypingSpeed(typingOptions.speed),
 				renderMode: .interaction,
 				daemon: .enabled
 			)

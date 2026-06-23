@@ -38,7 +38,7 @@ extension BrowserInstance {
 		let arguments: [String: Any] = [
 			"id": action.id, "value": value,
 			"delayMin": options.delayRange.min, "delayMax": options.delayRange.max,
-			"rhythm": options.rhythm.rawValue,
+			"rhythm": options.rhythm.rawValue, "speed": options.speed,
 		]
 		let message = try await callString(
 			Self.typeScript,

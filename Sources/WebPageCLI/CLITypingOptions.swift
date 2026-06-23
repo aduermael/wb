@@ -7,6 +7,7 @@ struct TypingOptions {
 	var max: TimeInterval?
 	var backend: TypingBackend?
 	var rhythm: TypingRhythm?
+	var speed: Double?
 }
 
 func parseTypingOptions(_ arguments: inout [String]) throws -> TypingOptions {
@@ -42,6 +43,19 @@ func parseTypingOptions(_ arguments: inout [String]) throws -> TypingOptions {
 
 		case let option where option.hasPrefix("--typing-delay-max="):
 			options.max = try TypingDelay.parse(String(option.dropFirst("--typing-delay-max=".count)))
+
+		case "--speed", "--typing-speed", "--type-speed":
+			let rawSpeed = try popTypingOptionValue(from: &arguments, after: argument)
+			options.speed = try TypingSpeed.parse(rawSpeed)
+
+		case let option where option.hasPrefix("--speed="):
+			options.speed = try TypingSpeed.parse(String(option.dropFirst("--speed=".count)))
+
+		case let option where option.hasPrefix("--typing-speed="):
+			options.speed = try TypingSpeed.parse(String(option.dropFirst("--typing-speed=".count)))
+
+		case let option where option.hasPrefix("--type-speed="):
+			options.speed = try TypingSpeed.parse(String(option.dropFirst("--type-speed=".count)))
 
 		case "--backend", "--typing-backend", "--type-backend":
 			let rawBackend = try popTypingOptionValue(from: &arguments, after: argument)

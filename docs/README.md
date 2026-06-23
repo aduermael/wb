@@ -12,7 +12,7 @@ Migration note: older sessions created in a cwd-local `wb/` directory or a non-r
 
 The `page` command refreshes the action list for the current document. If the page navigates or rerenders, run `wb page <id>` again before using action numbers from older output.
 
-Use `wb type <id> <action> <text>` for text entry in inputs, textareas, and contenteditable elements. It focuses the element, clears existing content, and uses the default native backend with natural rhythm: AppKit key events go through the browser's persistent WebView attachment with short word and punctuation pauses. Use `--backend js` or `--rhythm flat` only as fallbacks. Use `wb fill` when direct value assignment is intentional, such as selecting a `<select>` value or bypassing typing for a simple control.
+Use `wb type <id> <action> <text>` for text entry in inputs, textareas, and contenteditable elements. It focuses the element, clears existing content, and uses the default native backend with natural rhythm: AppKit key events go through the browser's persistent WebView attachment with short word and punctuation pauses. The default `--speed 2.0` types twice as fast as the base delays; use `--speed 1.0` for the previous speed. Use `--backend js` or `--rhythm flat` only as fallbacks. Use `wb fill` when direct value assignment is intentional, such as selecting a `<select>` value or bypassing typing for a simple control.
 
 URL opens return when the page HTML is ready by default. Use `--wait-resources` to wait for scripts, styles, images, and fetches. `--resource-timeout <seconds>` adjusts that wait, implies `--wait-resources`, and is capped at 100 seconds.
 

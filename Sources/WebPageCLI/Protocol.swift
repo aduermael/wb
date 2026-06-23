@@ -4,7 +4,7 @@
 import Foundation
 
 enum WireProtocol {
-	static let version = 37
+	static let version = 38
 }
 
 enum DaemonTiming {
@@ -103,6 +103,25 @@ enum TypingDelay {
 			throw WBError.message("typing delay minimum must be less than or equal to maximum")
 		}
 		return TypingDelayRange(min: min, max: max)
+	}
+}
+
+enum TypingSpeed {
+	static let defaultFactor: Double = 2.0
+
+	static func parse(_ rawValue: String) throws -> Double {
+		guard let factor = Double(rawValue) else {
+			throw WBError.message("invalid typing speed \(rawValue)")
+		}
+		return try validate(factor, rawValue: rawValue)
+	}
+
+	static func validate(_ factor: Double, rawValue: String? = nil) throws -> Double {
+		let renderedValue = rawValue ?? String(factor)
+		guard factor.isFinite && factor > 0 else {
+			throw WBError.message("invalid typing speed \(renderedValue)")
+		}
+		return factor
 	}
 }
 
@@ -207,6 +226,7 @@ struct WireRequest: Codable, Sendable {
 	var typingDelayMax: TimeInterval? = nil
 	var typingBackend: TypingBackend? = nil
 	var typingRhythm: TypingRhythm? = nil
+	var typingSpeed: Double? = nil
 	var windowWidth: Int? = nil
 	var windowHeight: Int? = nil
 
@@ -291,6 +311,12 @@ struct WireRequest: Codable, Sendable {
 	func withTypingRhythm(_ rhythm: TypingRhythm?) -> WireRequest {
 		var request = self
 		request.typingRhythm = rhythm
+		return request
+	}
+
+	func withTypingSpeed(_ speed: Double?) -> WireRequest {
+		var request = self
+		request.typingSpeed = speed
 		return request
 	}
 
@@ -391,6 +417,10 @@ struct WireRequest: Codable, Sendable {
 		typingRhythm ?? TypingRhythm.default
 	}
 
+	func typingSpeedValue() throws -> Double {
+		try TypingSpeed.validate(typingSpeed ?? TypingSpeed.defaultFactor)
+	}
+
 	func windowSize(default defaultSize: BrowserWindowSize = BrowserWindowSizing.defaultSize) throws
 		-> BrowserWindowSize
 	{
@@ -430,6 +460,7 @@ struct WireRequest: Codable, Sendable {
 		let requestsTypingDelays = typingDelayMin != nil || typingDelayMax != nil
 		let requestsTypingBackend = typingBackend != nil
 		let requestsTypingRhythm = typingRhythm != nil
+		let requestsTypingSpeed = typingSpeed != nil
 		if requestsTypingDelays && command != .typeText {
 			throw WBError.message("typing delay options are only supported for type command")
 		}
@@ -439,8 +470,14 @@ struct WireRequest: Codable, Sendable {
 		if requestsTypingRhythm && command != .typeText {
 			throw WBError.message("typing rhythm option is only supported for type command")
 		}
+		if requestsTypingSpeed && command != .typeText {
+			throw WBError.message("typing speed option is only supported for type command")
+		}
 		if requestsTypingDelays || command == .typeText {
 			_ = try typingDelayRange()
+		}
+		if requestsTypingSpeed || command == .typeText {
+			_ = try typingSpeedValue()
 		}
 	}
 
@@ -474,6 +511,7 @@ struct TypingExecutionOptions: Sendable {
 	let delayRange: TypingDelayRange
 	let backend: TypingBackend
 	let rhythm: TypingRhythm
+	let speed: Double
 }
 
 struct WireResponse: Codable, Sendable {

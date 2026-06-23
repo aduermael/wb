@@ -167,7 +167,8 @@ final class BrowserManager: @unchecked Sendable {
 				options: TypingExecutionOptions(
 					delayRange: try request.typingDelayRange(),
 					backend: request.typingBackendValue(),
-					rhythm: request.typingRhythmValue()
+					rhythm: request.typingRhythmValue(),
+					speed: try request.typingSpeedValue()
 				)
 			)
 			try ensureActive(browser, context: "type")

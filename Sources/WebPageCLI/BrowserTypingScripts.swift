@@ -225,11 +225,12 @@ extension BrowserInstance {
 			function wkcliNextDelay(previousCharacter) {
 			  const min = Math.max(0, Number(delayMin || 0));
 			  const max = Math.max(min, Number(delayMax || min));
+			  const speedFactor = Math.max(Number.EPSILON, Number(speed || \(TypingSpeed.defaultFactor)));
 			  const base = min + Math.random() * (max - min);
 			  if (String(rhythm || "flat") !== "natural") {
-			    return base * 1000;
+			    return base / speedFactor * 1000;
 			  }
-			  return Math.min(5, base * wkcliNaturalDelayMultiplier(previousCharacter)) * 1000;
+			  return Math.min(5, base * wkcliNaturalDelayMultiplier(previousCharacter) / speedFactor) * 1000;
 			}
 
 			function wkcliClear(el) {

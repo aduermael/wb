@@ -46,6 +46,7 @@ wb "$id" https://example.com
 - Always try `wb type` first for inputs, textareas, and contenteditable fields.
 - Defaults are native backend plus natural rhythm. Do not add flags unless you need a fallback or comparison.
 - Native/natural sends AppKit key events through the persistent browser with short word and punctuation pauses.
+- Default typing speed is `--speed 2.0`; use `--speed 1.0` for the base delay speed.
 - Use `--backend js` only when native typing is unavailable.
 - Use `--rhythm flat` only when deterministic timing matters.
 - Use `fill` for deliberate direct assignment, simple controls such as selects, or fallback.

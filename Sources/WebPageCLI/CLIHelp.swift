@@ -33,7 +33,7 @@ func printHelp(_ topic: HelpTopic) {
 			  wb release <id> <x> <y>
 			  wb scroll <id> <x> <y> <deltaX> <deltaY>
 			  wb type <id> <action> <text> [--backend js|native] [--rhythm flat|natural]
-			    [--delay-min <seconds>] [--delay-max <seconds>]
+			    [--speed <factor>] [--delay-min <seconds>] [--delay-max <seconds>]
 			  wb fill <id> <action> <text>
 			  wb submit <id> <action>
 			  wb eval <id> [--body] <javascript>
@@ -278,7 +278,7 @@ func printHelp(_ topic: HelpTopic) {
 			"""
 			Usage:
 			  wb type <id> <action> <text> [--backend js|native] [--rhythm flat|natural]
-			    [--delay-min <seconds>] [--delay-max <seconds>]
+			    [--speed <factor>] [--delay-min <seconds>] [--delay-max <seconds>]
 
 			Focuses a text input, textarea, or contenteditable action, clears existing content,
 			then enters text with key/input/change events and short randomized key delays.
@@ -291,6 +291,8 @@ func printHelp(_ topic: HelpTopic) {
 			  --rhythm <flat|natural>  Typing rhythm; natural is default and adds short
 			                           word and punctuation pauses. Use flat only as a
 			                           fallback.
+			  --speed <factor>         Typing speed multiplier; default
+			                           \(TypingSpeed.defaultFactor). Use 1.0 for the previous speed.
 			  --delay-min <seconds>    Minimum randomized delay before each key; default
 			                           \(TypingDelay.defaultMin) seconds.
 			  --delay-max <seconds>    Maximum randomized delay before each key; default

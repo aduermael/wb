@@ -353,11 +353,7 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
 		let characters = Array(text)
 		var previousCharacter: Character?
 		for character in characters {
-			try await sleep(
-				for: options.delayRange,
-				rhythm: options.rhythm,
-				after: previousCharacter
-			)
+			try await sleep(options: options, after: previousCharacter)
 			try sendKey(.character(String(character)))
 			previousCharacter = character
 		}
@@ -558,14 +554,10 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
 		window.hasShadow = false
 	}
 
-	private func sleep(
-		for delayRange: TypingDelayRange,
-		rhythm: TypingRhythm,
-		after previousCharacter: Character?
-	) async throws {
-		let baseDelay = Double.random(in: delayRange.min...delayRange.max)
-		let multiplier = rhythm == .natural ? naturalDelayMultiplier(after: previousCharacter) : 1
-		let delay = min(TypingDelay.maxDelay, baseDelay * multiplier)
+	private func sleep(options: TypingExecutionOptions, after previousCharacter: Character?) async throws {
+		let baseDelay = Double.random(in: options.delayRange.min...options.delayRange.max)
+		let multiplier = options.rhythm == .natural ? naturalDelayMultiplier(after: previousCharacter) : 1
+		let delay = min(TypingDelay.maxDelay, baseDelay * multiplier / options.speed)
 		try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
 	}
 

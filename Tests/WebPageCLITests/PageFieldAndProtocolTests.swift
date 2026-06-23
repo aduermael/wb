@@ -34,6 +34,7 @@ struct PageFieldAndProtocolTests {
 			.withTypingDelays(min: 0.01, max: 0.02)
 			.withTypingBackend(.native)
 			.withTypingRhythm(.natural)
+			.withTypingSpeed(3.5)
 
 		XCTAssertEqual(try request.requiredBrowserID(), "deadbeef")
 		XCTAssertEqual(try request.requiredURL().absoluteString, "https://example.com")
@@ -55,6 +56,7 @@ struct PageFieldAndProtocolTests {
 		)
 		XCTAssertEqual(request.typingBackendValue(), .native)
 		XCTAssertEqual(request.typingRhythmValue(), .natural)
+		XCTAssertEqual(try request.typingSpeedValue(), 3.5)
 
 		assertThrowsMessage(try WireRequest(command: .page).requiredBrowserID(), "missing browser id")
 		assertThrowsMessage(try WireRequest(command: .eval).requiredScript(), "missing JavaScript")
@@ -158,6 +160,7 @@ struct PageFieldAndProtocolTests {
 		XCTAssertEqual(defaults, TypingDelayRange(min: TypingDelay.defaultMin, max: TypingDelay.defaultMax))
 		XCTAssertEqual(WireRequest(command: .typeText).typingBackendValue(), .native)
 		XCTAssertEqual(WireRequest(command: .typeText).typingRhythmValue(), .natural)
+		XCTAssertEqual(try WireRequest(command: .typeText).typingSpeedValue(), TypingSpeed.defaultFactor)
 
 		try WireRequest(command: .typeText)
 			.withTypingDelays(min: 0, max: 0.01)
@@ -167,6 +170,9 @@ struct PageFieldAndProtocolTests {
 			.validateTypingDelays()
 		try WireRequest(command: .typeText)
 			.withTypingRhythm(.flat)
+			.validateTypingDelays()
+		try WireRequest(command: .typeText)
+			.withTypingSpeed(1.5)
 			.validateTypingDelays()
 		XCTAssertEqual(
 			try WireRequest(command: .typeText)
@@ -200,10 +206,22 @@ struct PageFieldAndProtocolTests {
 			"typing rhythm option is only supported for type command"
 		)
 		assertThrowsMessage(
+			try WireRequest(command: .fill)
+				.withTypingSpeed(1.5)
+				.validateTypingDelays(),
+			"typing speed option is only supported for type command"
+		)
+		assertThrowsMessage(
 			try WireRequest(command: .typeText)
 				.withTypingDelays(min: -0.01, max: 0.01)
 				.validateTypingDelays(),
 			"invalid typing delay -0.01"
+		)
+		assertThrowsMessage(
+			try WireRequest(command: .typeText)
+				.withTypingSpeed(0)
+				.validateTypingDelays(),
+			"invalid typing speed 0.0"
 		)
 		assertThrowsMessage(
 			try WireRequest(command: .typeText)
