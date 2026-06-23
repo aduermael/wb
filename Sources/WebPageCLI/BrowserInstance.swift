@@ -212,6 +212,23 @@ final class BrowserInstance {
 		)
 	}
 
+	func typeText(_ actionReference: String, value: String, delayRange: TypingDelayRange) async throws
+		-> InteractionResult
+	{
+		let generation = try beginLifecycleGeneration()
+		try await ensureActions(lifecycleGeneration: generation)
+		let action = try action(matching: actionReference)
+		let previousURL = page.url
+		let arguments: [String: Any] = [
+			"id": action.id, "value": value,
+			"delayMin": delayRange.min, "delayMax": delayRange.max,
+		]
+		let message = try await callString(
+			Self.typeScript, arguments: arguments, lifecycleGeneration: generation)
+		try await settleAfterInteraction(from: previousURL, lifecycleGeneration: generation)
+		return InteractionResult(message: message, page: try await snapshot(lifecycleGeneration: generation))
+	}
+
 	func submit(_ actionReference: String) async throws -> InteractionResult {
 		let generation = try beginLifecycleGeneration()
 		try await ensureActions(lifecycleGeneration: generation)

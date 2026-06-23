@@ -188,6 +188,32 @@ struct CLIParserTests {
 		XCTAssertEqual(fill.request?.action, "search")
 		XCTAssertEqual(fill.request?.value, "hello world")
 
+		let type = try CLIParser.parse([
+			"type",
+			"deadbeef",
+			"search",
+			"hello",
+			"world",
+			"--delay-min=0.01",
+			"--delay-max",
+			"0.02",
+		])
+		XCTAssertEqual(type.request?.command, .typeText)
+		XCTAssertEqual(type.request?.action, "search")
+		XCTAssertEqual(type.request?.value, "hello world")
+		XCTAssertEqual(type.request?.typingDelayMin, 0.01)
+		XCTAssertEqual(type.request?.typingDelayMax, 0.02)
+
+		let typeMinOnly = try CLIParser.parse([
+			"type",
+			"deadbeef",
+			"search",
+			"value",
+			"--delay-min",
+			"0.2",
+		])
+		XCTAssertEqual(try typeMinOnly.request?.typingDelayRange(), TypingDelayRange(min: 0.2, max: 0.2))
+
 		let submit = try CLIParser.parse(["submit", "deadbeef", "form-id"])
 		XCTAssertEqual(submit.request?.command, .submit)
 		XCTAssertEqual(submit.request?.action, "form-id")
@@ -199,6 +225,20 @@ struct CLIParserTests {
 		guard case .value = evaluation.renderMode else {
 			return XCTFail("expected value rendering")
 		}
+
+		assertThrowsMessage(
+			try CLIParser.parse([
+				"type",
+				"deadbeef",
+				"search",
+				"value",
+				"--delay-min",
+				"0.2",
+				"--delay-max",
+				"0.1",
+			]),
+			"typing delay minimum must be less than or equal to maximum"
+		)
 	}
 
 	func testCoordinateCommandsRejectInvalidNumbers() throws {

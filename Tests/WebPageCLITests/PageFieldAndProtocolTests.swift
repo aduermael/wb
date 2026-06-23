@@ -31,6 +31,7 @@ struct PageFieldAndProtocolTests {
 			.withDestinationPath("/tmp/shot.png")
 			.withCoordinate("scroll", point: WirePoint(x: 1.5, y: 2), delta: WireDelta(x: -3, y: 4))
 			.withResourceLoading(waitForResources: true, timeout: 3.5)
+			.withTypingDelays(min: 0.01, max: 0.02)
 
 		XCTAssertEqual(try request.requiredBrowserID(), "deadbeef")
 		XCTAssertEqual(try request.requiredURL().absoluteString, "https://example.com")
@@ -46,6 +47,10 @@ struct PageFieldAndProtocolTests {
 		XCTAssertEqual(try request.requiredDeltaY(), 4)
 		XCTAssertEqual(request.waitForResources, true)
 		XCTAssertEqual(try request.resourceWaitTimeout(default: 8), 3.5)
+		XCTAssertEqual(
+			try request.typingDelayRange(),
+			TypingDelayRange(min: 0.01, max: 0.02)
+		)
 
 		assertThrowsMessage(try WireRequest(command: .page).requiredBrowserID(), "missing browser id")
 		assertThrowsMessage(try WireRequest(command: .eval).requiredScript(), "missing JavaScript")
@@ -141,6 +146,52 @@ struct PageFieldAndProtocolTests {
 				.withScreenshotDelay(ScreenshotCapture.maxDelay + 0.1)
 				.validateResourceLoading(),
 			"exceeds maximum 10"
+		)
+	}
+
+	func testTypingDelayValidation() throws {
+		let defaults = try WireRequest(command: .typeText).typingDelayRange()
+		XCTAssertEqual(defaults, TypingDelayRange(min: TypingDelay.defaultMin, max: TypingDelay.defaultMax))
+
+		try WireRequest(command: .typeText)
+			.withTypingDelays(min: 0, max: 0.01)
+			.validateTypingDelays()
+		XCTAssertEqual(
+			try WireRequest(command: .typeText)
+				.withTypingDelays(min: 0.2, max: nil)
+				.typingDelayRange(),
+			TypingDelayRange(min: 0.2, max: 0.2)
+		)
+		XCTAssertEqual(
+			try WireRequest(command: .typeText)
+				.withTypingDelays(min: nil, max: 0.01)
+				.typingDelayRange(),
+			TypingDelayRange(min: 0.01, max: 0.01)
+		)
+
+		assertThrowsMessage(
+			try WireRequest(command: .fill)
+				.withTypingDelays(min: 0, max: 0.01)
+				.validateTypingDelays(),
+			"typing delay options are only supported for type command"
+		)
+		assertThrowsMessage(
+			try WireRequest(command: .typeText)
+				.withTypingDelays(min: -0.01, max: 0.01)
+				.validateTypingDelays(),
+			"invalid typing delay -0.01"
+		)
+		assertThrowsMessage(
+			try WireRequest(command: .typeText)
+				.withTypingDelays(min: 0, max: TypingDelay.maxDelay + 0.01)
+				.validateTypingDelays(),
+			"exceeds maximum 5"
+		)
+		assertThrowsMessage(
+			try WireRequest(command: .typeText)
+				.withTypingDelays(min: 0.2, max: 0.1)
+				.validateTypingDelays(),
+			"typing delay minimum must be less than or equal to maximum"
 		)
 	}
 

@@ -12,7 +12,7 @@ It gives scripts and coding agents a real persistent browser session without a b
 ## ✨ Why wb
 
 - **Small enough to vendor into agent workflows.** A single lightweight macOS binary, not a browser distribution.
-- **Made for command loops.** Create a browser once, then navigate, inspect, click, fill, scroll, screenshot, and evaluate JavaScript across separate CLI calls.
+- **Made for command loops.** Create a browser once, then navigate, inspect, click, type, fill, scroll, screenshot, and evaluate JavaScript across separate CLI calls.
 - **Structured output by default.** Commands return compact JSON summaries and stable action indexes that are easy for agents to consume.
 - **Headless until you need eyes.** Use `wb show <id>` to attach a live preview window to the same browser session, then `wb hide <id>` to go back to CLI-only control.
 - **Coordinates and screenshots line up.** The screenshot viewport is the same coordinate space used by `click`, `press`, `drag`, `release`, and `scroll`.
@@ -183,7 +183,7 @@ In this checkout, `.agents/skills/wb`, `.claude/skills/wb`, and `.grok/skills/wb
 
 Commands avoid returning a full page snapshot unless explicitly asked. Use `wb <url>` or `wb <id> <url>` for a compact summary containing the browser ID, title, URL, page/resource loading status, action count, resource count, full-document HTML byte count, and default page JSON byte count. Use `wb page <id>` when you need visible text, the full action list, and loaded resource URLs.
 
-Browser IDs are random 8-character lowercase hex strings. Page snapshot text is markdown-like and includes inline links where possible. Page actions are compact by default and include a 1-based `index` for `click`, `fill`, and `submit`; internal IDs, CSS selectors, and tags are omitted unless requested. Resource entries include a 1-based `index`, `type`, and resolved URL. The `resources` array is capped at 250 entries to keep output bounded, while `resourceCount` reports the total discovered resources. Use `wb page <id> --action-details` to include internal action IDs, or `wb page <id> --selectors` to include CSS selectors.
+Browser IDs are random 8-character lowercase hex strings. Page snapshot text is markdown-like and includes inline links where possible. Page actions are compact by default and include a 1-based `index` for `click`, `type`, `fill`, and `submit`; internal IDs, CSS selectors, and tags are omitted unless requested. Resource entries include a 1-based `index`, `type`, and resolved URL. The `resources` array is capped at 250 entries to keep output bounded, while `resourceCount` reports the total discovered resources. Use `wb page <id> --action-details` to include internal action IDs, or `wb page <id> --selectors` to include CSS selectors.
 
 Navigation errors are emitted as JSON responses with `ok:false` and a nonzero exit status. When a browser exists, the error JSON includes its browser ID so it can still be shown, reused, or closed.
 
@@ -210,7 +210,8 @@ Use `wb page --help` to see filterable fields. Use `wb page <id> --fields title,
 - `wb drag <id> <x> <y>`: send a page mouse-drag event to a viewport coordinate after `press`.
 - `wb release <id> <x> <y>`: send a page mouse-up event at a viewport coordinate.
 - `wb scroll <id> <x> <y> <deltaX> <deltaY>`: scroll at a viewport coordinate without opening a window.
-- `wb fill <id> <action> <text>`: set the value of an input, textarea, select, or contenteditable element and print a compact summary.
+- `wb type <id> <action> <text> [--delay-min <seconds>] [--delay-max <seconds>]`: focus a text input, textarea, or contenteditable element, then enter text with key/input/change events and short randomized key delays.
+- `wb fill <id> <action> <text>`: directly set the value of an input, textarea, select, or contenteditable element and print a compact summary.
 - `wb submit <id> <action>`: submit the nearest form for an action and print a compact summary.
 - `wb eval <id> [--body] <javascript>`: evaluate a JavaScript expression, or run a raw JavaScript function body with `--body`, and print the result.
 - `wb daemon <start|status|log|stop>`: advanced browser session controls.

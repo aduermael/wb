@@ -53,6 +53,9 @@ TestHarness.run("PageFieldAndProtocolTests.testResourceTimeoutValidationAndWaitS
 TestHarness.run("PageFieldAndProtocolTests.testResourceLoadingValidationRejectsUnsupportedCommands") {
 	try pageFieldAndProtocolTests.testResourceLoadingValidationRejectsUnsupportedCommands()
 }
+TestHarness.run("PageFieldAndProtocolTests.testTypingDelayValidation") {
+	try pageFieldAndProtocolTests.testTypingDelayValidation()
+}
 TestHarness.run("PageFieldAndProtocolTests.testWindowSizeValidation") {
 	try pageFieldAndProtocolTests.testWindowSizeValidation()
 }

@@ -12,6 +12,8 @@ Migration note: older sessions created in a cwd-local `wb/` directory or a non-r
 
 The `page` command refreshes the action list for the current document. If the page navigates or rerenders, run `wb page <id>` again before using action numbers from older output.
 
+Use `wb type <id> <action> <text>` for text entry in inputs, textareas, and contenteditable elements. It focuses the element, clears existing content, enters characters with key/input/change events, and uses short randomized delays between keys so form validation and JavaScript listeners can react. Use `wb fill` when direct value assignment is intentional, such as selecting a `<select>` value or bypassing typing for a simple control.
+
 URL opens return when the page HTML is ready by default. Use `--wait-resources` to wait for scripts, styles, images, and fetches. `--resource-timeout <seconds>` adjusts that wait, implies `--wait-resources`, and is capped at 100 seconds.
 
 `wb page` resource entries are capped at 250 items to keep JSON output bounded. `resourceCount` reports the total discovered resources, which may be larger than the returned `resources` array.

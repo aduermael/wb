@@ -1,6 +1,6 @@
 ---
 name: wb-browser
-description: Use the installed wb CLI to browse web pages, inspect compact page JSON, click/fill/submit actions, use viewport coordinates, scroll, take screenshots, and extract structured data efficiently without returning full page snapshots.
+description: Use the installed wb CLI to browse web pages, inspect compact page JSON, click/type/fill/submit actions, use viewport coordinates, scroll, take screenshots, and extract structured data efficiently without returning full page snapshots.
 ---
 
 # wb Browser Automation
@@ -11,7 +11,7 @@ description: Use the installed wb CLI to browse web pages, inspect compact page 
 - Browsers persist between commands. Reuse the returned browser ID until the task is done, then close it when appropriate.
 - Start with compact commands. `wb <url>` and interaction commands return summaries with `browser`, `title`, `url`, `progress`, `actions`, `resources`, `htmlBytes`, and `jsonBytes`.
 - Use `wb page <id>` only when you need visible text, action details, or loaded resource URLs.
-- After any navigation, click, fill, submit, scroll, or rerender, refresh with `wb page <id>` before reusing action numbers.
+- After any navigation, click, type, fill, submit, scroll, or rerender, refresh with `wb page <id>` before reusing action numbers.
 
 ## Basic Workflow
 
@@ -52,7 +52,8 @@ After the user completes the handoff, continue with the same browser ID and refr
 - `wb click <id> <x> <y>`: click viewport coordinates.
 - `wb press|drag|release <id> <x> <y>`: perform pointer gestures with top-left origin viewport coordinates.
 - `wb scroll <id> <x> <y> <deltaX> <deltaY>`: scroll the nearest scrollable element at a viewport coordinate. Positive `deltaY` scrolls down.
-- `wb fill <id> <action> <text>`: set input, textarea, select, or contenteditable content.
+- `wb type <id> <action> <text> [--delay-min <seconds>] [--delay-max <seconds>]`: focus a text input, textarea, or contenteditable action, clear existing content, then enter text with key/input/change events and short randomized key delays.
+- `wb fill <id> <action> <text>`: directly set input, textarea, select, or contenteditable content.
 - `wb submit <id> <action>`: submit the nearest form or click the action if no form exists.
 - `wb eval <id> [--body] <javascript>`: evaluate JavaScript and print the returned value.
 - `wb daemon <start|status|log|stop>`: inspect or control the browser daemon.
@@ -179,7 +180,10 @@ Use screenshots when visual layout matters, when a canvas/custom control is not 
 ## Interaction Guidance
 
 - Prefer action indexes from `wb page --fields actions` over coordinate clicks.
-- Use `fill` for form controls, then `submit` on the same action or a nearby submit action.
+- Prefer human-like interactions over direct DOM mutation: use `click`, `type`, pointer gestures, and normal submission before reaching for `fill` or `eval`.
+- Use `type` for text entry in inputs, textareas, and contenteditable fields; it triggers key/input/change handlers and gives client-side validation a chance to run. Directly changing values through HTML/JavaScript can bypass framework state, validators, masks, autocomplete behavior, or other event-driven checks.
+- Use `fill` when direct value assignment is intentional, such as setting a `<select>` value, dealing with a control that cannot sensibly be typed into, or working around a page that rejects synthetic typing.
+- After entering form values, use `submit` on the same action or a nearby submit action.
 - Use coordinate clicks for canvas, maps, drag handles, or controls missing from `.actions`.
 - Use scroll before extracting more content from infinite-scroll pages; then refresh `wb page`.
 - If a command returns JSON with `ok:false`, read `error`, `browser`, and any included page summary before retrying.

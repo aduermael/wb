@@ -27,6 +27,7 @@ final class BrowserManager: @unchecked Sendable {
 		do {
 			let request = try JSONDecoder().decode(WireRequest.self, from: data)
 			try request.validateResourceLoading()
+			try request.validateTypingDelays()
 			try request.validateWindowSize()
 			daemonLog("request command=\(request.command.rawValue) browser=\(request.browser ?? "-")")
 			let response = try await handle(request)
@@ -151,6 +152,22 @@ final class BrowserManager: @unchecked Sendable {
 			let result = try await browser.fill(action, value: value)
 			try ensureActive(browser, context: "fill")
 			scheduleAutosave(browser, reason: "fill")
+			return WireResponse.success()
+				.withBrowser(browser.id)
+				.withPage(result.page)
+				.withMessage(result.message)
+
+		case .typeText:
+			let browser = try await requireBrowser(request.browser)
+			let action = try request.requiredAction()
+			let value = try request.requiredValue()
+			let result = try await browser.typeText(
+				action,
+				value: value,
+				delayRange: try request.typingDelayRange()
+			)
+			try ensureActive(browser, context: "type")
+			scheduleAutosave(browser, reason: "type")
 			return WireResponse.success()
 				.withBrowser(browser.id)
 				.withPage(result.page)

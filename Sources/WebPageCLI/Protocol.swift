@@ -4,7 +4,7 @@
 import Foundation
 
 enum WireProtocol {
-	static let version = 34
+	static let version = 35
 }
 
 enum DaemonTiming {
@@ -69,6 +69,43 @@ enum ScreenshotCapture {
 	}
 }
 
+enum TypingDelay {
+	static let defaultMin: TimeInterval = 0.03
+	static let defaultMax: TimeInterval = 0.12
+	static let maxDelay: TimeInterval = 5
+
+	static func parse(_ rawValue: String) throws -> TimeInterval {
+		guard let delay = TimeInterval(rawValue) else {
+			throw WBError.message("invalid typing delay \(rawValue)")
+		}
+		return try validateSingle(delay, rawValue: rawValue)
+	}
+
+	static func validateSingle(_ delay: TimeInterval, rawValue: String? = nil) throws
+		-> TimeInterval
+	{
+		let renderedValue = rawValue ?? String(delay)
+		guard delay.isFinite && delay >= 0 else {
+			throw WBError.message("invalid typing delay \(renderedValue)")
+		}
+		guard delay <= maxDelay else {
+			throw WBError.message(
+				"typing delay \(renderedValue) exceeds maximum \(Int(maxDelay))"
+			)
+		}
+		return delay
+	}
+
+	static func validateRange(min: TimeInterval, max: TimeInterval) throws -> TypingDelayRange {
+		let min = try validateSingle(min)
+		let max = try validateSingle(max)
+		guard min <= max else {
+			throw WBError.message("typing delay minimum must be less than or equal to maximum")
+		}
+		return TypingDelayRange(min: min, max: max)
+	}
+}
+
 struct BrowserWindowSize: Equatable, Sendable {
 	let width: Int
 	let height: Int
@@ -104,6 +141,7 @@ enum WireCommand: String, Codable, Equatable, Sendable {
 	case page
 	case click
 	case fill
+	case typeText = "type"
 	case submit
 	case eval
 	case screenshot
@@ -129,6 +167,8 @@ struct WireRequest: Codable, Sendable {
 	var waitForResources: Bool? = nil
 	var resourceTimeout: TimeInterval? = nil
 	var screenshotDelay: TimeInterval? = nil
+	var typingDelayMin: TimeInterval? = nil
+	var typingDelayMax: TimeInterval? = nil
 	var windowWidth: Int? = nil
 	var windowHeight: Int? = nil
 
@@ -194,6 +234,13 @@ struct WireRequest: Codable, Sendable {
 	func withScreenshotDelay(_ delay: TimeInterval?) -> WireRequest {
 		var request = self
 		request.screenshotDelay = delay
+		return request
+	}
+
+	func withTypingDelays(min: TimeInterval?, max: TimeInterval?) -> WireRequest {
+		var request = self
+		request.typingDelayMin = min
+		request.typingDelayMax = max
 		return request
 	}
 
@@ -271,6 +318,21 @@ struct WireRequest: Codable, Sendable {
 		try ScreenshotCapture.validateDelay(screenshotDelay ?? defaultDelay)
 	}
 
+	func typingDelayRange() throws -> TypingDelayRange {
+		let min =
+			typingDelayMin
+			?? typingDelayMax.map { Swift.min(TypingDelay.defaultMin, $0) }
+			?? TypingDelay.defaultMin
+		let max =
+			typingDelayMax
+			?? typingDelayMin.map { Swift.max($0, TypingDelay.defaultMax) }
+			?? TypingDelay.defaultMax
+		return try TypingDelay.validateRange(
+			min: min,
+			max: max
+		)
+	}
+
 	func windowSize(default defaultSize: BrowserWindowSize = BrowserWindowSizing.defaultSize) throws
 		-> BrowserWindowSize
 	{
@@ -306,6 +368,16 @@ struct WireRequest: Codable, Sendable {
 		}
 	}
 
+	func validateTypingDelays() throws {
+		let requestsTypingDelays = typingDelayMin != nil || typingDelayMax != nil
+		if requestsTypingDelays && command != .typeText {
+			throw WBError.message("typing delay options are only supported for type command")
+		}
+		if requestsTypingDelays || command == .typeText {
+			_ = try typingDelayRange()
+		}
+	}
+
 	func validateWindowSize() throws {
 		let requestsWindowSize = windowWidth != nil || windowHeight != nil
 		if requestsWindowSize && command != .browserResize {
@@ -325,6 +397,11 @@ struct WirePoint: Sendable {
 struct WireDelta: Sendable {
 	let x: Double
 	let y: Double
+}
+
+struct TypingDelayRange: Equatable, Sendable {
+	let min: TimeInterval
+	let max: TimeInterval
 }
 
 struct WireResponse: Codable, Sendable {

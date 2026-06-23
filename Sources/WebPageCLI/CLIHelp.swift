@@ -31,6 +31,7 @@ func printHelp(_ topic: HelpTopic) {
 			  wb drag <id> <x> <y>
 			  wb release <id> <x> <y>
 			  wb scroll <id> <x> <y> <deltaX> <deltaY>
+			  wb type <id> <action> <text> [--delay-min <seconds>] [--delay-max <seconds>]
 			  wb fill <id> <action> <text>
 			  wb submit <id> <action>
 			  wb eval <id> [--body] <javascript>
@@ -243,6 +244,24 @@ func printHelp(_ topic: HelpTopic) {
 
 			Sets the value of an input, textarea, select, or contenteditable action.
 			<action> may be a 1-based number or an action ID.
+			""")
+
+	case .type:
+		print(
+			"""
+			Usage:
+			  wb type <id> <action> <text> [--delay-min <seconds>] [--delay-max <seconds>]
+
+			Focuses a text input, textarea, or contenteditable action, clears existing content,
+			then enters text with key/input/change events and short randomized key delays.
+			<action> may be a 1-based number or an action ID.
+
+			Options:
+			  --delay-min <seconds>    Minimum randomized delay before each key; default
+			                           \(TypingDelay.defaultMin) seconds.
+			  --delay-max <seconds>    Maximum randomized delay before each key; default
+			                           \(TypingDelay.defaultMax) seconds, max
+			                           \(Int(TypingDelay.maxDelay)) seconds.
 			""")
 
 	case .submit:
