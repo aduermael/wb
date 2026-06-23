@@ -330,10 +330,7 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
 		let shouldRestoreVisibleWindow =
 			!isHiddenByCommand && window.isVisible && !window.isMiniaturized
 		let previousCenter = CGPoint(x: window.frame.midX, y: window.frame.midY)
-		window.setContentSize(BrowserWindowMetrics.nsSize(size))
-		var frame = window.frame
-		frame.origin.x = previousCenter.x - frame.width / 2
-		frame.origin.y = previousCenter.y - frame.height / 2
+		var frame = frame(forContentSize: size, centeredAt: previousCenter, in: window)
 		frame = constrainFrameToVisibleScreen(frame, for: window)
 		window.setFrame(frame, display: shouldRestoreVisibleWindow)
 		window.contentView?.layoutSubtreeIfNeeded()
@@ -433,12 +430,18 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
 
 	private func positionWindow(_ window: NSWindow) {
 		guard let screen = NSScreen.main ?? NSScreen.screens.first else {
+			let center = CGPoint(x: window.frame.midX, y: window.frame.midY)
+			window.setFrame(
+				frame(forContentSize: preferredSize, centeredAt: center, in: window),
+				display: false
+			)
 			window.center()
 			daemonLog("window positioned browser=\(browserID) fallback=center no-screen")
 			return
 		}
 
 		let visibleFrame = screen.visibleFrame
+		let preferredFrameSize = frameSize(forContentSize: preferredSize, in: window)
 		let maxWidth = max(
 			BrowserWindowMetrics.minimumSize.width,
 			visibleFrame.width - BrowserWindowMetrics.screenPadding
@@ -447,8 +450,8 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
 			BrowserWindowMetrics.minimumSize.height,
 			visibleFrame.height - BrowserWindowMetrics.screenPadding
 		)
-		let width = min(max(BrowserWindowMetrics.minimumSize.width, window.frame.width), maxWidth)
-		let height = min(max(BrowserWindowMetrics.minimumSize.height, window.frame.height), maxHeight)
+		let width = min(max(BrowserWindowMetrics.minimumSize.width, preferredFrameSize.width), maxWidth)
+		let height = min(max(BrowserWindowMetrics.minimumSize.height, preferredFrameSize.height), maxHeight)
 		let frame = NSRect(
 			x: visibleFrame.midX - width / 2,
 			y: visibleFrame.midY - height / 2,
@@ -459,6 +462,25 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
 		daemonLog(
 			"window positioned browser=\(browserID) frame=(\(rectDebugDescription(frame))) "
 				+ "screen=\(screen.localizedName)"
+		)
+	}
+
+	private func frameSize(forContentSize size: BrowserWindowSize, in window: NSWindow) -> NSSize {
+		let contentRect = NSRect(origin: .zero, size: BrowserWindowMetrics.nsSize(size))
+		return window.frameRect(forContentRect: contentRect).size
+	}
+
+	private func frame(
+		forContentSize size: BrowserWindowSize,
+		centeredAt center: CGPoint,
+		in window: NSWindow
+	) -> NSRect {
+		let frameSize = frameSize(forContentSize: size, in: window)
+		return NSRect(
+			x: center.x - frameSize.width / 2,
+			y: center.y - frameSize.height / 2,
+			width: frameSize.width,
+			height: frameSize.height
 		)
 	}
 
