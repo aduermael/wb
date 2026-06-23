@@ -205,6 +205,10 @@ struct UpdaterTests {
 		}
 	}
 
+	func testHomebrewUpgradeDisablesAskMode() {
+		XCTAssertEqual(WBUpdater.homebrewUpgradeEnvironmentOverrides, ["HOMEBREW_NO_ASK": "1"])
+	}
+
 	func testStreamingCommandsCanAutoConfirmPrompts() throws {
 		try withTemporaryDirectory { directory in
 			let script = directory.appendingPathComponent("prompt.sh")
@@ -223,6 +227,28 @@ struct UpdaterTests {
 			try ProcessCommand.runStreaming(script.path, [answerPath.path], inputMode: .autoConfirm)
 
 			XCTAssertEqual(try String(contentsOf: answerPath, encoding: .utf8), "y\n")
+		}
+	}
+
+	func testStreamingCommandsCanOverrideEnvironment() throws {
+		try withTemporaryDirectory { directory in
+			let script = directory.appendingPathComponent("environment.sh")
+			let outputPath = directory.appendingPathComponent("environment.txt")
+			try Data(
+				"""
+				#!/bin/sh
+				printf '%s\\n' "$WB_TEST_OVERRIDE" > "$1"
+				""".utf8
+			)
+			.write(to: script)
+			try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: script.path)
+
+			try ProcessCommand.runStreaming(
+				script.path, [outputPath.path],
+				options: StreamingCommandOptions(
+					environmentOverrides: ["WB_TEST_OVERRIDE": "set"]))
+
+			XCTAssertEqual(try String(contentsOf: outputPath, encoding: .utf8), "set\n")
 		}
 	}
 }

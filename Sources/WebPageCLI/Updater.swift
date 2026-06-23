@@ -87,9 +87,27 @@ enum StreamingInputMode {
 	case autoConfirmWhenHeadless
 }
 
+struct StreamingCommandOptions {
+	var inputMode: StreamingInputMode
+	var environmentOverrides: [String: String]
+
+	init(
+		inputMode: StreamingInputMode = .inherit,
+		environmentOverrides: [String: String] = [:]
+	) {
+		self.inputMode = inputMode
+		self.environmentOverrides = environmentOverrides
+	}
+}
+
 private enum CommandIOMode {
 	case captureOutput
 	case stream(inputMode: StreamingInputMode)
+}
+
+private struct ProcessRunOptions {
+	var mode: CommandIOMode
+	var environmentOverrides: [String: String]
 }
 
 enum InstallationDetector {
@@ -226,7 +244,9 @@ enum InstallationDetector {
 
 enum ProcessCommand {
 	static func run(_ executablePath: String, _ arguments: [String]) throws -> CommandResult {
-		try run(executablePath, arguments, mode: .captureOutput)
+		try run(
+			executablePath, arguments,
+			options: ProcessRunOptions(mode: .captureOutput, environmentOverrides: [:]))
 	}
 
 	static func runStreaming(
@@ -234,22 +254,44 @@ enum ProcessCommand {
 		_ arguments: [String],
 		inputMode: StreamingInputMode = .inherit
 	) throws {
-		_ = try run(executablePath, arguments, mode: .stream(inputMode: inputMode))
+		try runStreaming(
+			executablePath, arguments, options: StreamingCommandOptions(inputMode: inputMode))
+	}
+
+	static func runStreaming(
+		_ executablePath: String,
+		_ arguments: [String],
+		options: StreamingCommandOptions
+	) throws {
+		_ = try run(
+			executablePath, arguments,
+			options: ProcessRunOptions(
+				mode: .stream(inputMode: options.inputMode),
+				environmentOverrides: options.environmentOverrides
+			)
+		)
 	}
 
 	private static func run(
 		_ executablePath: String,
 		_ arguments: [String],
-		mode: CommandIOMode
+		options: ProcessRunOptions
 	) throws -> CommandResult {
 		let process = Process()
 		process.executableURL = URL(fileURLWithPath: executablePath)
 		process.arguments = arguments
+		if !options.environmentOverrides.isEmpty {
+			var environment = ProcessInfo.processInfo.environment
+			for (key, value) in options.environmentOverrides {
+				environment[key] = value
+			}
+			process.environment = environment
+		}
 
 		let outputPipe: Pipe?
 		let errorPipe: Pipe?
 		let inputPipe: Pipe?
-		switch mode {
+		switch options.mode {
 		case .captureOutput:
 			outputPipe = Pipe()
 			errorPipe = Pipe()
@@ -344,6 +386,7 @@ enum ProcessCommand {
 enum WBUpdater {
 	static let checkInterval: TimeInterval = 12 * 60 * 60
 	static let defaultRepository = "aduermael/wb"
+	static let homebrewUpgradeEnvironmentOverrides = ["HOMEBREW_NO_ASK": "1"]
 
 	static func maybePrintStaleNotice() async {
 		guard WBVersion.isReleaseBuild else {
@@ -446,7 +489,10 @@ enum WBUpdater {
 		print("Updating wb with Homebrew...")
 		try ProcessCommand.runStreaming(brewPath, ["update"], inputMode: .autoConfirmWhenHeadless)
 		try ProcessCommand.runStreaming(
-			brewPath, ["upgrade", "wb"], inputMode: .autoConfirmWhenHeadless)
+			brewPath, ["upgrade", "wb"],
+			options: StreamingCommandOptions(
+				inputMode: .autoConfirmWhenHeadless,
+				environmentOverrides: homebrewUpgradeEnvironmentOverrides))
 		print("Homebrew update completed.")
 	}
 

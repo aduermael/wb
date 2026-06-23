@@ -129,8 +129,14 @@ TestHarness.run("UpdaterTests.testInstallationDetectorIdentifiesNPMExecutable") 
 TestHarness.run("UpdaterTests.testInstallationDetectorAllowsNPMOverride") {
 	try updaterTests.testInstallationDetectorAllowsNPMOverride()
 }
+TestHarness.run("UpdaterTests.testHomebrewUpgradeDisablesAskMode") {
+	updaterTests.testHomebrewUpgradeDisablesAskMode()
+}
 TestHarness.run("UpdaterTests.testStreamingCommandsCanAutoConfirmPrompts") {
 	try updaterTests.testStreamingCommandsCanAutoConfirmPrompts()
+}
+TestHarness.run("UpdaterTests.testStreamingCommandsCanOverrideEnvironment") {
+	try updaterTests.testStreamingCommandsCanOverrideEnvironment()
 }
 
 let skillInstallerTests = SkillInstallerTests()

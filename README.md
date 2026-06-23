@@ -96,7 +96,7 @@ To install a specific release:
 curl -fsSL https://raw.githubusercontent.com/aduermael/wb/main/install.sh | env WB_VERSION=0.1.0 sh
 ```
 
-Release builds check for a newer version at most once every 12 hours and print an update notice to stderr when stale. Run `wb update` to upgrade; Homebrew installs delegate to `brew update` and `brew upgrade wb`, npm installs delegate to `npm install -g @aduermael_/wb@latest`, and standalone installs replace the current binary.
+Release builds check for a newer version at most once every 12 hours and print an update notice to stderr when stale. Run `wb update` to upgrade; Homebrew installs delegate to `brew update` and a no-ask `brew upgrade wb`, npm installs delegate to `npm install -g @aduermael_/wb@latest`, and standalone installs replace the current binary.
 
 ## ⚡ Quick Start
 
