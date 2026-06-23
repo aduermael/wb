@@ -401,6 +401,11 @@ enum WBUpdater {
 				repository: repository(from: environment)
 			)
 		}
+
+		SkillAutoUpdater.launch(
+			executablePath: executablePath,
+			environment: ProcessInfo.processInfo.environment
+		)
 	}
 
 	static func automaticChecksEnabled(environment: [String: String]) -> Bool {
@@ -568,7 +573,7 @@ enum WBUpdater {
 		Darwin.isatty(STDIN_FILENO) == 1 && FileManager.default.isExecutableFile(atPath: "/usr/bin/sudo")
 	}
 
-	private static func currentExecutablePath() throws -> String {
+	static func currentExecutablePath() throws -> String {
 		var size: UInt32 = 0
 		_ = _NSGetExecutablePath(nil, &size)
 		var buffer = [CChar](repeating: 0, count: Int(size) + 1)

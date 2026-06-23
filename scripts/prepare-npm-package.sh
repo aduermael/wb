@@ -46,14 +46,18 @@ tag="v$version"
 stage="$script_dir/dist/$tag/npm"
 
 rm -rf "$stage"
-mkdir -p "$stage/npm/bin" "$stage/npm/scripts"
+mkdir -p "$stage/npm/bin" "$stage/npm/scripts" "$stage/skill"
 
 cp "$script_dir/package.json" "$stage/package.json"
 cp "$script_dir/README.md" "$stage/README.md"
 cp "$script_dir/LICENSE" "$stage/LICENSE"
+cp "$script_dir/install-skill.sh" "$stage/install-skill.sh"
 cp "$script_dir/npm/bin/wb.js" "$stage/npm/bin/wb.js"
 cp "$script_dir/npm/scripts/install.js" "$stage/npm/scripts/install.js"
-chmod 0755 "$stage/npm/bin/wb.js" "$stage/npm/scripts/install.js"
+cp "$script_dir/skill/SKILL.md" "$stage/skill/SKILL.md"
+cp "$script_dir/skill/install.sh" "$stage/skill/install.sh"
+chmod 0755 "$stage/install-skill.sh" "$stage/npm/bin/wb.js" "$stage/npm/scripts/install.js"
+chmod 0755 "$stage/skill/install.sh"
 
 node - "$version" "$stage/package.json" <<'NODE'
 const fs = require("node:fs");

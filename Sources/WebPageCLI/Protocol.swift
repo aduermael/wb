@@ -4,7 +4,7 @@
 import Foundation
 
 enum WireProtocol {
-	static let version = 35
+	static let version = 37
 }
 
 enum DaemonTiming {
@@ -106,6 +106,42 @@ enum TypingDelay {
 	}
 }
 
+enum TypingBackend: String, Codable, Equatable, Sendable {
+	case javaScript = "js"
+	case native
+
+	static let `default` = TypingBackend.native
+
+	static func parse(_ rawValue: String) throws -> TypingBackend {
+		switch rawValue.lowercased() {
+		case "js", "javascript":
+			return .javaScript
+		case "native":
+			return .native
+		default:
+			throw WBError.message("unknown typing backend \(rawValue)")
+		}
+	}
+}
+
+enum TypingRhythm: String, Codable, Equatable, Sendable {
+	case flat
+	case natural
+
+	static let `default` = TypingRhythm.natural
+
+	static func parse(_ rawValue: String) throws -> TypingRhythm {
+		switch rawValue.lowercased() {
+		case "flat":
+			return .flat
+		case "natural", "human":
+			return .natural
+		default:
+			throw WBError.message("unknown typing rhythm \(rawValue)")
+		}
+	}
+}
+
 struct BrowserWindowSize: Equatable, Sendable {
 	let width: Int
 	let height: Int
@@ -169,6 +205,8 @@ struct WireRequest: Codable, Sendable {
 	var screenshotDelay: TimeInterval? = nil
 	var typingDelayMin: TimeInterval? = nil
 	var typingDelayMax: TimeInterval? = nil
+	var typingBackend: TypingBackend? = nil
+	var typingRhythm: TypingRhythm? = nil
 	var windowWidth: Int? = nil
 	var windowHeight: Int? = nil
 
@@ -241,6 +279,18 @@ struct WireRequest: Codable, Sendable {
 		var request = self
 		request.typingDelayMin = min
 		request.typingDelayMax = max
+		return request
+	}
+
+	func withTypingBackend(_ backend: TypingBackend?) -> WireRequest {
+		var request = self
+		request.typingBackend = backend
+		return request
+	}
+
+	func withTypingRhythm(_ rhythm: TypingRhythm?) -> WireRequest {
+		var request = self
+		request.typingRhythm = rhythm
 		return request
 	}
 
@@ -333,6 +383,14 @@ struct WireRequest: Codable, Sendable {
 		)
 	}
 
+	func typingBackendValue() -> TypingBackend {
+		typingBackend ?? TypingBackend.default
+	}
+
+	func typingRhythmValue() -> TypingRhythm {
+		typingRhythm ?? TypingRhythm.default
+	}
+
 	func windowSize(default defaultSize: BrowserWindowSize = BrowserWindowSizing.defaultSize) throws
 		-> BrowserWindowSize
 	{
@@ -370,8 +428,16 @@ struct WireRequest: Codable, Sendable {
 
 	func validateTypingDelays() throws {
 		let requestsTypingDelays = typingDelayMin != nil || typingDelayMax != nil
+		let requestsTypingBackend = typingBackend != nil
+		let requestsTypingRhythm = typingRhythm != nil
 		if requestsTypingDelays && command != .typeText {
 			throw WBError.message("typing delay options are only supported for type command")
+		}
+		if requestsTypingBackend && command != .typeText {
+			throw WBError.message("typing backend option is only supported for type command")
+		}
+		if requestsTypingRhythm && command != .typeText {
+			throw WBError.message("typing rhythm option is only supported for type command")
 		}
 		if requestsTypingDelays || command == .typeText {
 			_ = try typingDelayRange()
@@ -402,6 +468,12 @@ struct WireDelta: Sendable {
 struct TypingDelayRange: Equatable, Sendable {
 	let min: TimeInterval
 	let max: TimeInterval
+}
+
+struct TypingExecutionOptions: Sendable {
+	let delayRange: TypingDelayRange
+	let backend: TypingBackend
+	let rhythm: TypingRhythm
 }
 
 struct WireResponse: Codable, Sendable {

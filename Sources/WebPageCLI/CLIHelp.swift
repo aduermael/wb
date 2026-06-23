@@ -13,6 +13,7 @@ func printHelp(_ topic: HelpTopic) {
 			Usage:
 			  wb [<id>] <url> [--wait-resources] [--resource-timeout <seconds>]
 			  wb env
+			  wb install-skill [--codex] [--claude] [--grok] [--all]
 			  wb update
 			  wb version
 			  wb create
@@ -31,7 +32,8 @@ func printHelp(_ topic: HelpTopic) {
 			  wb drag <id> <x> <y>
 			  wb release <id> <x> <y>
 			  wb scroll <id> <x> <y> <deltaX> <deltaY>
-			  wb type <id> <action> <text> [--delay-min <seconds>] [--delay-max <seconds>]
+			  wb type <id> <action> <text> [--backend js|native] [--rhythm flat|natural]
+			    [--delay-min <seconds>] [--delay-max <seconds>]
 			  wb fill <id> <action> <text>
 			  wb submit <id> <action>
 			  wb eval <id> [--body] <javascript>
@@ -62,6 +64,31 @@ func printHelp(_ topic: HelpTopic) {
 			By default, wb uses .wb next to the nearest parent .git directory.
 			Outside a git checkout, it uses .wb under the current directory.
 			Set WB_DIR to override the environment directory.
+			""")
+
+	case .installSkill:
+		print(
+			"""
+			Usage:
+			  wb install-skill [--codex] [--claude] [--grok] [--all]
+			  wb install-skill --auto-update-existing
+
+			Installs the embedded wb agent skill and its bundled install.sh support script.
+
+			Options:
+			  --codex                  Install .agents/skills/wb.
+			  --claude                 Install .claude/skills/wb.
+			  --grok                   Install .grok/skills/wb.
+			  --all                    Install all default agent targets.
+			  --target <name|path>     Install one named target or custom skill directory.
+			  --name <name>            Use a skill folder name other than wb.
+			  --auto-update-existing   Update only existing wb skill folders; create nothing.
+
+			Notes:
+			  - Without target flags, installs Codex, Claude, and Grok skill folders.
+			  - Normal wb commands silently refresh existing project skill folders.
+			  - Automatic refreshes use --auto-update-existing, so missing targets are not created.
+			  - Set WB_SKILL_AUTO_UPDATE=off to disable automatic refreshes.
 			""")
 
 	case .update:
@@ -250,13 +277,20 @@ func printHelp(_ topic: HelpTopic) {
 		print(
 			"""
 			Usage:
-			  wb type <id> <action> <text> [--delay-min <seconds>] [--delay-max <seconds>]
+			  wb type <id> <action> <text> [--backend js|native] [--rhythm flat|natural]
+			    [--delay-min <seconds>] [--delay-max <seconds>]
 
 			Focuses a text input, textarea, or contenteditable action, clears existing content,
 			then enters text with key/input/change events and short randomized key delays.
 			<action> may be a 1-based number or an action ID.
 
 			Options:
+			  --backend <js|native>    Typing backend; native is default and sends AppKit
+			                           key events to the browser's persistent WebView.
+			                           Use js only as a fallback.
+			  --rhythm <flat|natural>  Typing rhythm; natural is default and adds short
+			                           word and punctuation pauses. Use flat only as a
+			                           fallback.
 			  --delay-min <seconds>    Minimum randomized delay before each key; default
 			                           \(TypingDelay.defaultMin) seconds.
 			  --delay-max <seconds>    Maximum randomized delay before each key; default

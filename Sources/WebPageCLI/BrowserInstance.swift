@@ -11,10 +11,10 @@ import WebKit
 final class BrowserInstance {
 	let id: String
 
-	private let page: WebPage
+	let page: WebPage
 	private var actions: [BrowserAction] = []
 	private var windowController: BrowserWindowController?
-	private var previewWindowSize = BrowserWindowSizing.defaultSize
+	var previewWindowSize = BrowserWindowSizing.defaultSize
 	private var navigationObserverTask: Task<Void, Never>?
 	private var navigationSequence = 0
 	private var navigationObservation = NavigationObservationState()
@@ -212,23 +212,6 @@ final class BrowserInstance {
 		)
 	}
 
-	func typeText(_ actionReference: String, value: String, delayRange: TypingDelayRange) async throws
-		-> InteractionResult
-	{
-		let generation = try beginLifecycleGeneration()
-		try await ensureActions(lifecycleGeneration: generation)
-		let action = try action(matching: actionReference)
-		let previousURL = page.url
-		let arguments: [String: Any] = [
-			"id": action.id, "value": value,
-			"delayMin": delayRange.min, "delayMax": delayRange.max,
-		]
-		let message = try await callString(
-			Self.typeScript, arguments: arguments, lifecycleGeneration: generation)
-		try await settleAfterInteraction(from: previousURL, lifecycleGeneration: generation)
-		return InteractionResult(message: message, page: try await snapshot(lifecycleGeneration: generation))
-	}
-
 	func submit(_ actionReference: String) async throws -> InteractionResult {
 		let generation = try beginLifecycleGeneration()
 		try await ensureActions(lifecycleGeneration: generation)
@@ -318,33 +301,19 @@ final class BrowserInstance {
 
 		let format = try ScreenshotFormat(path: path)
 		let viewport = try await viewportSize(lifecycleGeneration: generation)
-		let pngData: Data
-		if shouldUseScreenshotRenderHost {
-			daemonLog("screenshot attaching internal render host id=\(id)")
-			windowController?.detachHiddenWindowForScreenshotRenderHost()
-			let renderHost = ScreenshotRenderHost(page: page, viewport: viewport)
-			pngData = try await renderHost.withAttached {
-				try await prepareForScreenshotCapture(
-					resourceTimeout: resourceTimeout,
-					captureDelay: captureDelay,
-					lifecycleGeneration: generation
-				)
-				return try await exportScreenshotPNG(
-					viewport: viewport,
-					lifecycleGeneration: generation
-				)
-			}
-		} else {
-			try await prepareForScreenshotCapture(
-				resourceTimeout: resourceTimeout,
-				captureDelay: captureDelay,
-				lifecycleGeneration: generation
-			)
-			pngData = try await exportScreenshotPNG(
-				viewport: viewport,
-				lifecycleGeneration: generation
-			)
+		if shouldAttachPersistentWindowForScreenshot {
+			daemonLog("screenshot attaching persistent transparent window id=\(id)")
+			ensureWindowController().attachTransparentlyIfNeeded()
 		}
+		try await prepareForScreenshotCapture(
+			resourceTimeout: resourceTimeout,
+			captureDelay: captureDelay,
+			lifecycleGeneration: generation
+		)
+		let pngData = try await exportScreenshotPNG(
+			viewport: viewport,
+			lifecycleGeneration: generation
+		)
 		let imageData = try format.encodedData(fromPNG: pngData)
 		try ensureOpen(generation)
 
@@ -361,7 +330,7 @@ final class BrowserInstance {
 		return ScreenshotOutput(path: url.path, bytes: imageData.count, format: format.name)
 	}
 
-	private var shouldUseScreenshotRenderHost: Bool {
+	private var shouldAttachPersistentWindowForScreenshot: Bool {
 		windowController?.hasAttachedWindowForScreenshotCapture != true
 	}
 
@@ -459,8 +428,7 @@ final class BrowserInstance {
 		windowController?.keepsDaemonAlive == true
 	}
 
-	func showWindow() {
-		daemonLog("browser show window id=\(id)")
+	func ensureWindowController() -> BrowserWindowController {
 		if windowController == nil {
 			let controller = BrowserWindowController(
 				browserID: id,
@@ -477,7 +445,12 @@ final class BrowserInstance {
 			controller.resize(to: previewWindowSize)
 			windowController = controller
 		}
-		windowController?.show()
+		return windowController!
+	}
+
+	func showWindow() {
+		daemonLog("browser show window id=\(id)")
+		ensureWindowController().show()
 	}
 
 	func resizeWindow(to size: BrowserWindowSize) {
@@ -508,7 +481,7 @@ final class BrowserInstance {
 		closeWindow()
 	}
 
-	private func ensureActions(lifecycleGeneration generation: Int) async throws {
+	func ensureActions(lifecycleGeneration generation: Int) async throws {
 		if actions.isEmpty {
 			_ = try await refreshActions(lifecycleGeneration: generation)
 		}
@@ -528,7 +501,7 @@ final class BrowserInstance {
 		return actions
 	}
 
-	private func action(matching reference: String) throws -> BrowserAction {
+	func action(matching reference: String) throws -> BrowserAction {
 		if let index = Int(reference),
 			let action = actions.first(where: { $0.index == index })
 		{
@@ -541,7 +514,7 @@ final class BrowserInstance {
 		return action
 	}
 
-	private func callString(
+	func callString(
 		_ functionBody: String,
 		arguments: [String: Any] = [:],
 		lifecycleGeneration generation: Int? = nil
@@ -695,7 +668,9 @@ final class BrowserInstance {
 		}
 	}
 
-	private func settleAfterInteraction(from startingURL: URL?, lifecycleGeneration generation: Int) async throws {
+	func settleAfterInteraction(from startingURL: URL?, lifecycleGeneration generation: Int)
+		async throws
+	{
 		let deadline = Date().addingTimeInterval(InteractionSettling.defaultTimeout)
 		var lastURL = startingURL
 		var quietSince: Date?
@@ -900,7 +875,7 @@ final class BrowserInstance {
 		}
 	}
 
-	private func snapshot(lifecycleGeneration generation: Int) async throws -> PageSnapshot {
+	func snapshot(lifecycleGeneration generation: Int) async throws -> PageSnapshot {
 		try await snapshot(fallbackURL: nil, lifecycleGeneration: generation)
 	}
 
@@ -909,7 +884,7 @@ final class BrowserInstance {
 		return lifecycleGeneration
 	}
 
-	private func beginLifecycleGeneration() throws -> Int {
+	func beginLifecycleGeneration() throws -> Int {
 		try ensureOpen()
 		lifecycleGeneration += 1
 		return lifecycleGeneration

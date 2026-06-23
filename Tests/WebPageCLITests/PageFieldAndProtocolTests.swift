@@ -32,6 +32,8 @@ struct PageFieldAndProtocolTests {
 			.withCoordinate("scroll", point: WirePoint(x: 1.5, y: 2), delta: WireDelta(x: -3, y: 4))
 			.withResourceLoading(waitForResources: true, timeout: 3.5)
 			.withTypingDelays(min: 0.01, max: 0.02)
+			.withTypingBackend(.native)
+			.withTypingRhythm(.natural)
 
 		XCTAssertEqual(try request.requiredBrowserID(), "deadbeef")
 		XCTAssertEqual(try request.requiredURL().absoluteString, "https://example.com")
@@ -51,6 +53,8 @@ struct PageFieldAndProtocolTests {
 			try request.typingDelayRange(),
 			TypingDelayRange(min: 0.01, max: 0.02)
 		)
+		XCTAssertEqual(request.typingBackendValue(), .native)
+		XCTAssertEqual(request.typingRhythmValue(), .natural)
 
 		assertThrowsMessage(try WireRequest(command: .page).requiredBrowserID(), "missing browser id")
 		assertThrowsMessage(try WireRequest(command: .eval).requiredScript(), "missing JavaScript")
@@ -152,9 +156,17 @@ struct PageFieldAndProtocolTests {
 	func testTypingDelayValidation() throws {
 		let defaults = try WireRequest(command: .typeText).typingDelayRange()
 		XCTAssertEqual(defaults, TypingDelayRange(min: TypingDelay.defaultMin, max: TypingDelay.defaultMax))
+		XCTAssertEqual(WireRequest(command: .typeText).typingBackendValue(), .native)
+		XCTAssertEqual(WireRequest(command: .typeText).typingRhythmValue(), .natural)
 
 		try WireRequest(command: .typeText)
 			.withTypingDelays(min: 0, max: 0.01)
+			.validateTypingDelays()
+		try WireRequest(command: .typeText)
+			.withTypingBackend(.javaScript)
+			.validateTypingDelays()
+		try WireRequest(command: .typeText)
+			.withTypingRhythm(.flat)
 			.validateTypingDelays()
 		XCTAssertEqual(
 			try WireRequest(command: .typeText)
@@ -174,6 +186,18 @@ struct PageFieldAndProtocolTests {
 				.withTypingDelays(min: 0, max: 0.01)
 				.validateTypingDelays(),
 			"typing delay options are only supported for type command"
+		)
+		assertThrowsMessage(
+			try WireRequest(command: .fill)
+				.withTypingBackend(.native)
+				.validateTypingDelays(),
+			"typing backend option is only supported for type command"
+		)
+		assertThrowsMessage(
+			try WireRequest(command: .fill)
+				.withTypingRhythm(.natural)
+				.validateTypingDelays(),
+			"typing rhythm option is only supported for type command"
 		)
 		assertThrowsMessage(
 			try WireRequest(command: .typeText)

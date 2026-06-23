@@ -88,6 +88,9 @@ func runLocalCommand(_ command: LocalCommand) async throws {
 		let environment = try WBEnvironment.loadOrCreate(in: config.directory)
 		try printJSON(environment.metadata)
 
+	case .installSkill(let options):
+		try SkillInstaller.run(options: options)
+
 	case .update:
 		try await WBUpdater.runUpdate()
 

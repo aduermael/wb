@@ -194,6 +194,8 @@ struct CLIParserTests {
 			"search",
 			"hello",
 			"world",
+			"--backend=native",
+			"--rhythm=natural",
 			"--delay-min=0.01",
 			"--delay-max",
 			"0.02",
@@ -203,6 +205,19 @@ struct CLIParserTests {
 		XCTAssertEqual(type.request?.value, "hello world")
 		XCTAssertEqual(type.request?.typingDelayMin, 0.01)
 		XCTAssertEqual(type.request?.typingDelayMax, 0.02)
+		XCTAssertEqual(type.request?.typingBackend, .native)
+		XCTAssertEqual(type.request?.typingRhythm, .natural)
+
+		let typeAliasOptions = try CLIParser.parse([
+			"type",
+			"deadbeef",
+			"search",
+			"value",
+			"--native",
+			"--natural",
+		])
+		XCTAssertEqual(typeAliasOptions.request?.typingBackend, .native)
+		XCTAssertEqual(typeAliasOptions.request?.typingRhythm, .natural)
 
 		let typeMinOnly = try CLIParser.parse([
 			"type",
@@ -238,6 +253,28 @@ struct CLIParserTests {
 				"0.1",
 			]),
 			"typing delay minimum must be less than or equal to maximum"
+		)
+		assertThrowsMessage(
+			try CLIParser.parse([
+				"type",
+				"deadbeef",
+				"search",
+				"value",
+				"--backend",
+				"robot",
+			]),
+			"unknown typing backend robot"
+		)
+		assertThrowsMessage(
+			try CLIParser.parse([
+				"type",
+				"deadbeef",
+				"search",
+				"value",
+				"--rhythm",
+				"robot",
+			]),
+			"unknown typing rhythm robot"
 		)
 	}
 

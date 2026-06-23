@@ -130,6 +130,29 @@ TestHarness.run("UpdaterTests.testStreamingCommandsCanAutoConfirmPrompts") {
 	try updaterTests.testStreamingCommandsCanAutoConfirmPrompts()
 }
 
+let skillInstallerTests = SkillInstallerTests()
+TestHarness.run("SkillInstallerTests.testInstallSkillCommandParsesTargetsAndMode") {
+	try skillInstallerTests.testInstallSkillCommandParsesTargetsAndMode()
+}
+TestHarness.run("SkillInstallerTests.testSkillInstallerInstallsAndDetectsUnchangedTarget") {
+	try skillInstallerTests.testSkillInstallerInstallsAndDetectsUnchangedTarget()
+}
+TestHarness.run("SkillInstallerTests.testSkillInstallerAutoUpdateOnlyTouchesExistingTargets") {
+	try skillInstallerTests.testSkillInstallerAutoUpdateOnlyTouchesExistingTargets()
+}
+TestHarness.run("SkillInstallerTests.testSkillInstallerTreatsMissingExecutableBitAsOutdated") {
+	try skillInstallerTests.testSkillInstallerTreatsMissingExecutableBitAsOutdated()
+}
+TestHarness.run("SkillInstallerTests.testEmbeddedSkillPayloadMatchesCheckedInFiles") {
+	try skillInstallerTests.testEmbeddedSkillPayloadMatchesCheckedInFiles()
+}
+TestHarness.run("SkillInstallerTests.testSkillAutoUpdaterLaunchDecisionSkipsNonProjectCommands") {
+	try skillInstallerTests.testSkillAutoUpdaterLaunchDecisionSkipsNonProjectCommands()
+}
+TestHarness.run("SkillInstallerTests.testProjectDirectoryUsesNearestGitRoot") {
+	try skillInstallerTests.testProjectDirectoryUsesNearestGitRoot()
+}
+
 let sessionStoreTests = SessionStoreTests()
 TestHarness.run("SessionStoreTests.testIdleTimeoutParsing") {
 	sessionStoreTests.testIdleTimeoutParsing()

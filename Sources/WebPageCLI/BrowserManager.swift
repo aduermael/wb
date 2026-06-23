@@ -164,7 +164,11 @@ final class BrowserManager: @unchecked Sendable {
 			let result = try await browser.typeText(
 				action,
 				value: value,
-				delayRange: try request.typingDelayRange()
+				options: TypingExecutionOptions(
+					delayRange: try request.typingDelayRange(),
+					backend: request.typingBackendValue(),
+					rhythm: request.typingRhythmValue()
+				)
 			)
 			try ensureActive(browser, context: "type")
 			scheduleAutosave(browser, reason: "type")

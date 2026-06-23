@@ -222,7 +222,7 @@ struct UpdaterTests {
 
 			try ProcessCommand.runStreaming(script.path, [answerPath.path], inputMode: .autoConfirm)
 
-			XCTAssertEqual(try String(contentsOf: answerPath), "y\n")
+			XCTAssertEqual(try String(contentsOf: answerPath, encoding: .utf8), "y\n")
 		}
 	}
 }

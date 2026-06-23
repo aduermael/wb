@@ -28,7 +28,9 @@ enum BrowserApplicationHost {
 
 	static func demoteIfNoVisibleWindows() {
 		let application = NSApplication.shared
-		let hasVisibleWindow = application.windows.contains { $0.isVisible || $0.isMiniaturized }
+		let hasVisibleWindow = application.windows.contains {
+			($0.isVisible || $0.isMiniaturized) && $0.alphaValue > 0
+		}
 		if !hasVisibleWindow {
 			_ = application.setActivationPolicy(.accessory)
 		}
@@ -275,7 +277,7 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
 		guard let window else {
 			return false
 		}
-		return window.isVisible || window.isMiniaturized
+		return !isHiddenByCommand && window.alphaValue > 0 && (window.isVisible || window.isMiniaturized)
 	}
 
 	var isVisibleForScreenshotCapture: Bool {
@@ -286,7 +288,7 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
 	}
 
 	var hasAttachedWindowForScreenshotCapture: Bool {
-		window != nil && !isHiddenByCommand
+		window != nil
 	}
 
 	var keepsDaemonAlive: Bool {
@@ -302,6 +304,7 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
 		let window = window ?? makeWindow()
 		window.collectionBehavior = Self.previewCollectionBehavior
 		window.level = .floating
+		makeVisible(window)
 		application.activate(ignoringOtherApps: true)
 		window.makeKeyAndOrderFront(nil)
 		window.orderFrontRegardless()
@@ -316,8 +319,52 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
 	func hide() {
 		daemonLog("window hide requested browser=\(browserID)")
 		isHiddenByCommand = true
-		window?.orderOut(nil)
+		if let window {
+			makeTransparent(window)
+			window.displayIfNeeded()
+		}
 		BrowserApplicationHost.demoteIfNoVisibleWindows()
+	}
+
+	func attachTransparentlyIfNeeded() {
+		let wasCreated = window == nil
+		let window = window ?? makeWindow()
+		if isHiddenByCommand || !window.isVisible || window.alphaValue == 0 {
+			isHiddenByCommand = true
+			makeTransparent(window)
+			if wasCreated {
+				window.orderBack(nil)
+			}
+			window.displayIfNeeded()
+		}
+		window.contentView?.layoutSubtreeIfNeeded()
+		BrowserApplicationHost.pumpEvents(until: Date().addingTimeInterval(0.08))
+	}
+
+	func typeText(
+		_ text: String,
+		options: TypingExecutionOptions,
+		clearSelection: Bool
+	) async throws -> String {
+		if clearSelection {
+			try sendKey(.backspace)
+		}
+
+		let characters = Array(text)
+		var previousCharacter: Character?
+		for character in characters {
+			try await sleep(
+				for: options.delayRange,
+				rhythm: options.rhythm,
+				after: previousCharacter
+			)
+			try sendKey(.character(String(character)))
+			previousCharacter = character
+		}
+
+		BrowserApplicationHost.pumpEvents(until: Date().addingTimeInterval(0.05))
+		let count = characters.count
+		return "typed \(count) character\(count == 1 ? "" : "s")"
 	}
 
 	func resize(to size: BrowserWindowSize) {
@@ -339,6 +386,7 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
 			application.unhide(nil)
 			window.collectionBehavior = Self.previewCollectionBehavior
 			window.level = .floating
+			makeVisible(window)
 			application.activate(ignoringOtherApps: true)
 			window.makeKeyAndOrderFront(nil)
 			window.orderFrontRegardless()
@@ -348,19 +396,6 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
 			"window resized browser=\(browserID) frame=(\(rectDebugDescription(frame))) "
 				+ "restoreVisible=\(shouldRestoreVisibleWindow) visible=\(window.isVisible)"
 		)
-	}
-
-	func detachHiddenWindowForScreenshotRenderHost() {
-		guard let window, isHiddenByCommand, !window.isVisible, !window.isMiniaturized else {
-			return
-		}
-		daemonLog("window detach hidden preview for screenshot browser=\(browserID)")
-		isHiddenByCommand = true
-		window.delegate = nil
-		window.contentViewController = nil
-		window.close()
-		self.window = nil
-		BrowserApplicationHost.demoteIfNoVisibleWindows()
 	}
 
 	func close() {
@@ -510,6 +545,82 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
 		}
 		return constrained
 	}
+
+	private func makeVisible(_ window: NSWindow) {
+		window.alphaValue = 1
+		window.ignoresMouseEvents = false
+		window.hasShadow = true
+	}
+
+	private func makeTransparent(_ window: NSWindow) {
+		window.alphaValue = 0
+		window.ignoresMouseEvents = true
+		window.hasShadow = false
+	}
+
+	private func sleep(
+		for delayRange: TypingDelayRange,
+		rhythm: TypingRhythm,
+		after previousCharacter: Character?
+	) async throws {
+		let baseDelay = Double.random(in: delayRange.min...delayRange.max)
+		let multiplier = rhythm == .natural ? naturalDelayMultiplier(after: previousCharacter) : 1
+		let delay = min(TypingDelay.maxDelay, baseDelay * multiplier)
+		try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+	}
+
+	private func naturalDelayMultiplier(after character: Character?) -> Double {
+		guard let character else {
+			return 1
+		}
+		let text = String(character)
+		if text == "\n" || text == "\r" {
+			return Double.random(in: 3...4.5)
+		}
+		if ".!?".contains(text) {
+			return Double.random(in: 2.6...4)
+		}
+		if ",;:".contains(text) {
+			return Double.random(in: 1.8...2.7)
+		}
+		if text.rangeOfCharacter(from: .whitespacesAndNewlines) != nil {
+			return Double.random(in: 1.25...1.9)
+		}
+		return Double.random(in: 0.85...1.2)
+	}
+
+	private func sendKey(_ key: NativeTypingKey) throws {
+		guard let window else {
+			throw WBError.message("native typing window is not attached")
+		}
+		let down = try event(type: .keyDown, key: key, window: window)
+		let up = try event(type: .keyUp, key: key, window: window)
+		window.sendEvent(down)
+		window.sendEvent(up)
+		BrowserApplicationHost.pumpEvents(until: Date().addingTimeInterval(0.003))
+	}
+
+	private func event(type: NSEvent.EventType, key: NativeTypingKey, window: NSWindow) throws
+		-> NSEvent
+	{
+		guard
+			let event = NSEvent.keyEvent(
+				with: type,
+				location: .zero,
+				modifierFlags: key.modifiers,
+				timestamp: ProcessInfo.processInfo.systemUptime,
+				windowNumber: window.windowNumber,
+				context: nil,
+				characters: key.characters,
+				charactersIgnoringModifiers: key.charactersIgnoringModifiers,
+				isARepeat: false,
+				keyCode: key.keyCode
+			)
+		else {
+			throw WBError.message("could not create native key event")
+		}
+		return event
+	}
 }
 
 @available(macOS 26.0, *)
@@ -647,4 +758,87 @@ private struct BrowserWindowView: View {
 			} catch {}
 		}
 	}
+}
+
+private struct NativeTypingKey {
+	let characters: String
+	let charactersIgnoringModifiers: String
+	let keyCode: UInt16
+	let modifiers: NSEvent.ModifierFlags
+
+	static let backspace = NativeTypingKey(
+		characters: "\u{7F}",
+		charactersIgnoringModifiers: "\u{7F}",
+		keyCode: 51,
+		modifiers: []
+	)
+
+	static func character(_ character: String) -> NativeTypingKey {
+		let normalized = character == "\n" ? "\r" : character
+		return NativeTypingKey(
+			characters: normalized,
+			charactersIgnoringModifiers: normalized,
+			keyCode: keyCode(for: character),
+			modifiers: []
+		)
+	}
+
+	private static func keyCode(for character: String) -> UInt16 {
+		if character == "\n" {
+			return 36
+		}
+		return keyCodes[character.lowercased()] ?? 0
+	}
+
+	private static let keyCodes: [String: UInt16] = [
+		"a": 0,
+		"s": 1,
+		"d": 2,
+		"f": 3,
+		"h": 4,
+		"g": 5,
+		"z": 6,
+		"x": 7,
+		"c": 8,
+		"v": 9,
+		"b": 11,
+		"q": 12,
+		"w": 13,
+		"e": 14,
+		"r": 15,
+		"y": 16,
+		"t": 17,
+		"1": 18,
+		"2": 19,
+		"3": 20,
+		"4": 21,
+		"6": 22,
+		"5": 23,
+		"=": 24,
+		"9": 25,
+		"7": 26,
+		"-": 27,
+		"8": 28,
+		"0": 29,
+		"]": 30,
+		"o": 31,
+		"u": 32,
+		"[": 33,
+		"i": 34,
+		"p": 35,
+		"l": 37,
+		"j": 38,
+		"'": 39,
+		"k": 40,
+		";": 41,
+		"\\": 42,
+		",": 43,
+		"/": 44,
+		"n": 45,
+		"m": 46,
+		".": 47,
+		"`": 50,
+		" ": 49,
+		"\t": 48,
+	]
 }

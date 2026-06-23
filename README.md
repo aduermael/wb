@@ -19,25 +19,44 @@ It gives scripts and coding agents a real persistent browser session without a b
 
 ## 🚀 Install
 
-For agent workflows, install the skill folder in the current project:
+For agent workflows when `wb` is already installed, install the embedded skill
+folder in the current project:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/aduermael/wb/main/install-skill.sh | sh
+wb install-skill --codex
 ```
 
-The project installer copies the `wb` skill into `.agents/skills/wb`, `.claude/skills/wb`, and `.grok/skills/wb` by default. The skill includes a bundled `install.sh` support script that makes the `wb` command available if an agent tries to use the skill before the CLI is installed. That support script tries Homebrew first, then npm, then the standalone installer.
+Use `--claude`, `--grok`, or `--all` for other agent targets. Without target
+flags, `wb install-skill` installs the default Codex, Claude, and Grok skill
+folders.
 
-To install only one agent target:
+If you want the skill to install `wb` for agents that do not have the binary
+yet, use the standalone skill installer:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/aduermael/wb/main/install-skill.sh | env WB_SKILL_TARGETS=codex sh
+curl -fsSL https://raw.githubusercontent.com/aduermael/wb/main/install-skill.sh | sh -s -- --codex
+```
+
+The skill includes a bundled `install.sh` support script that makes the `wb`
+command available if an agent tries to use the skill before the CLI is installed.
+That support script tries Homebrew first, then npm, then the standalone installer.
+
+To install every default target with the standalone installer:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/aduermael/wb/main/install-skill.sh | sh -s -- --all
 ```
 
 To install the CLI immediately while installing the skill:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/aduermael/wb/main/install-skill.sh | env WB_INSTALL_CLI=1 sh
+curl -fsSL https://raw.githubusercontent.com/aduermael/wb/main/install-skill.sh | sh -s -- --codex --install-cli
 ```
+
+Normal `wb` commands also launch a silent project-local skill refresh in the
+background. That refresh only updates existing `wb` skill folders and never
+creates missing Codex, Claude, or Grok targets. Set `WB_SKILL_AUTO_UPDATE=off`
+to disable it.
 
 To install only the CLI, use Homebrew:
 
@@ -88,10 +107,7 @@ wb https://example.com
 That creates a browser, loads the page, and prints a compact JSON summary. For a longer-lived session:
 
 ```text
-$ wb create
-a3f19c0b
-
-$ wb a3f19c0b https://example.com
+$ wb https://example.com
 {"actions":1,"browser":"a3f19c0b","htmlBytes":1256,"jsonBytes":468,"progress":1.0,"resources":0,"title":"Example Domain","url":"https://example.com/"}
 
 $ wb page a3f19c0b
@@ -126,14 +142,14 @@ To build from source:
 
 ```bash
 swift build -Xswiftc -warnings-as-errors
-.build/debug/wb create
+.build/debug/wb https://example.com
 ```
 
 For a local debug binary at `./wb`:
 
 ```bash
 ./build.sh
-./wb create
+./wb https://example.com
 ```
 
 `build.sh` signs the final `./wb` binary by default using ad-hoc codesigning, so no Apple Developer ID is required. To use a specific local signing identity:
@@ -173,9 +189,9 @@ compile Swift with warnings treated as errors.
 
 ## 🤖 Agent Skill
 
-This repo includes a standalone agent skill folder at [skill](skill). It contains the skill instructions plus an `install.sh` support script that installs `wb` through Homebrew when available, npm when available, or the standalone installer otherwise.
+This repo includes a standalone agent skill folder at [skill](skill). It contains the skill instructions plus an `install.sh` support script that installs `wb` through Homebrew when available, npm when available, or the standalone installer otherwise. The release binary also embeds these files and can write them with `wb install-skill`.
 
-In this checkout, `.agents/skills/wb`, `.claude/skills/wb`, and `.grok/skills/wb` are symlinks to `skill/`, so each agent sees both files. In another project, use `install-skill.sh` from the install section to copy the folder into the local agent skill directories.
+In this checkout, `.agents/skills/wb`, `.claude/skills/wb`, and `.grok/skills/wb` are symlinks to `skill/`, so each agent sees both files. In another project, use `wb install-skill` or `install-skill.sh` from the install section to copy the folder into the local agent skill directories.
 
 ## 📦 Output
 
@@ -193,6 +209,7 @@ Use `wb page --help` to see filterable fields. Use `wb page <id> --fields title,
 
 - `wb create`: create an empty browser and print its ID.
 - `wb env`: print public metadata for the current `.wb` environment.
+- `wb install-skill [--codex] [--claude] [--grok] [--all]`: install the embedded agent skill.
 - `wb update`: update the CLI to the latest release.
 - `wb version`: print the CLI version.
 - `wb <url> [--wait-resources] [--resource-timeout <seconds>]`: create a browser, load the page, and print a compact summary. `--resource-timeout` implies `--wait-resources`; max 100 seconds.
@@ -210,7 +227,7 @@ Use `wb page --help` to see filterable fields. Use `wb page <id> --fields title,
 - `wb drag <id> <x> <y>`: send a page mouse-drag event to a viewport coordinate after `press`.
 - `wb release <id> <x> <y>`: send a page mouse-up event at a viewport coordinate.
 - `wb scroll <id> <x> <y> <deltaX> <deltaY>`: scroll at a viewport coordinate without opening a window.
-- `wb type <id> <action> <text> [--delay-min <seconds>] [--delay-max <seconds>]`: focus a text input, textarea, or contenteditable element, then enter text with key/input/change events and short randomized key delays.
+- `wb type <id> <action> <text> [--backend js|native] [--rhythm flat|natural] [--delay-min <seconds>] [--delay-max <seconds>]`: focus a text input, textarea, or contenteditable element, then enter text with short randomized key delays. The default `native` backend sends AppKit key events to the browser's persistent WebView attachment, and the default `natural` rhythm adds short word and punctuation pauses. Use `--backend js` or `--rhythm flat` only as fallbacks.
 - `wb fill <id> <action> <text>`: directly set the value of an input, textarea, select, or contenteditable element and print a compact summary.
 - `wb submit <id> <action>`: submit the nearest form for an action and print a compact summary.
 - `wb eval <id> [--body] <javascript>`: evaluate a JavaScript expression, or run a raw JavaScript function body with `--body`, and print the result.

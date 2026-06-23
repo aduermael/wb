@@ -1,8 +1,8 @@
-/// Stores the JavaScript snippet used for human-like text entry, kept separate
-/// from the general browser scripts to keep source files small.
+/// Stores the JavaScript snippets used for text entry, kept separate from the
+/// general browser scripts to keep source files small.
 @available(macOS 26.0, *)
 extension BrowserInstance {
-	static let typeScript =
+	private static let typingTargetScript =
 		findElementScript + """
 
 			function wkcliTypingTarget(id) {
@@ -35,34 +35,6 @@ extension BrowserInstance {
 			  if (el.isContentEditable) return el.textContent || "";
 			  if ("value" in el) return el.value || "";
 			  return "";
-			}
-
-			function wkcliSetText(el, text) {
-			  if (el.isContentEditable) {
-			    el.textContent = text;
-			    wkcliPlaceCaretAtEnd(el);
-			    return;
-			  }
-
-			  if (!("value" in el)) return;
-			  const tag = el.tagName.toLowerCase();
-			  const prototype = tag === "textarea" ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
-			  const descriptor = Object.getOwnPropertyDescriptor(prototype, "value");
-			  if (descriptor && descriptor.set) {
-			    descriptor.set.call(el, text);
-			  } else {
-			    el.value = text;
-			  }
-			}
-
-			function wkcliSelectionRange(el) {
-			  const length = wkcliCurrentText(el).length;
-			  try {
-			    if (typeof el.selectionStart === "number" && typeof el.selectionEnd === "number") {
-			      return [el.selectionStart, el.selectionEnd];
-			    }
-			  } catch {}
-			  return [length, length];
 			}
 
 			function wkcliPlaceCaretAtEnd(el) {
@@ -103,6 +75,54 @@ extension BrowserInstance {
 			      el.setSelectionRange(0, wkcliCurrentText(el).length);
 			    }
 			  } catch {}
+			}
+			"""
+
+	static let nativeTypePreparationScript =
+		typingTargetScript + """
+
+			function wkcliPrepareNativeTyping() {
+			  const target = wkcliTypingTarget(id);
+			  if (typeof target === "string") return target;
+			  const el = target;
+			  el.scrollIntoView({ block: "center", inline: "center" });
+			  el.focus({ preventScroll: true });
+			  wkcliSelectAll(el);
+			  return `prepared ${wkcliCurrentText(el).length}`;
+			}
+
+			return wkcliPrepareNativeTyping();
+			"""
+
+	static let typeScript =
+		typingTargetScript + """
+
+			function wkcliSetText(el, text) {
+			  if (el.isContentEditable) {
+			    el.textContent = text;
+			    wkcliPlaceCaretAtEnd(el);
+			    return;
+			  }
+
+			  if (!("value" in el)) return;
+			  const tag = el.tagName.toLowerCase();
+			  const prototype = tag === "textarea" ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+			  const descriptor = Object.getOwnPropertyDescriptor(prototype, "value");
+			  if (descriptor && descriptor.set) {
+			    descriptor.set.call(el, text);
+			  } else {
+			    el.value = text;
+			  }
+			}
+
+			function wkcliSelectionRange(el) {
+			  const length = wkcliCurrentText(el).length;
+			  try {
+			    if (typeof el.selectionStart === "number" && typeof el.selectionEnd === "number") {
+			      return [el.selectionStart, el.selectionEnd];
+			    }
+			  } catch {}
+			  return [length, length];
 			}
 
 			function wkcliInsertText(el, text) {
@@ -185,10 +205,31 @@ extension BrowserInstance {
 			  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 			}
 
-			function wkcliNextDelay() {
+			function wkcliNaturalDelayMultiplier(previousCharacter) {
+			  if (!previousCharacter) return 1;
+			  if (previousCharacter === "\\n" || previousCharacter === "\\r") {
+			    return 3 + Math.random() * 1.5;
+			  }
+			  if (/[.!?]/u.test(previousCharacter)) {
+			    return 2.6 + Math.random() * 1.4;
+			  }
+			  if (/[,;:]/u.test(previousCharacter)) {
+			    return 1.8 + Math.random() * 0.9;
+			  }
+			  if (/\\s/u.test(previousCharacter)) {
+			    return 1.25 + Math.random() * 0.65;
+			  }
+			  return 0.85 + Math.random() * 0.35;
+			}
+
+			function wkcliNextDelay(previousCharacter) {
 			  const min = Math.max(0, Number(delayMin || 0));
 			  const max = Math.max(min, Number(delayMax || min));
-			  return (min + Math.random() * (max - min)) * 1000;
+			  const base = min + Math.random() * (max - min);
+			  if (String(rhythm || "flat") !== "natural") {
+			    return base * 1000;
+			  }
+			  return Math.min(5, base * wkcliNaturalDelayMultiplier(previousCharacter)) * 1000;
 			}
 
 			function wkcliClear(el) {
@@ -242,10 +283,12 @@ extension BrowserInstance {
 			  if (clearResult !== "typed") return clearResult;
 
 			  const characters = Array.from(String(value ?? ""));
+			  let previousCharacter = "";
 			  for (const character of characters) {
-			    await wkcliDelay(wkcliNextDelay());
+			    await wkcliDelay(wkcliNextDelay(previousCharacter));
 			    const result = wkcliTypeCharacter(el, character);
 			    if (result !== "typed") return result;
+			    previousCharacter = character;
 			  }
 
 			  el.dispatchEvent(new Event("change", { bubbles: true }));

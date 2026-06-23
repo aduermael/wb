@@ -39,6 +39,7 @@ public enum WBMain {
 		}
 
 		let invocation = try CLIParser.parse(arguments)
+		SkillAutoUpdater.maybeLaunch(for: invocation)
 		if shouldCheckForUpdates(invocation) {
 			await WBUpdater.maybePrintStaleNotice()
 		}
@@ -81,7 +82,7 @@ public enum WBMain {
 			return false
 		}
 		switch invocation.localCommand {
-		case .some(.update), .some(.version):
+		case .some(.installSkill), .some(.update), .some(.version):
 			return false
 		case .some(.environment), .none:
 			return true

@@ -28,8 +28,11 @@
   "files": [
     "LICENSE",
     "README.md",
+    "install-skill.sh",
     "npm/bin/wb.js",
-    "npm/scripts/install.js"
+    "npm/scripts/install.js",
+    "skill/SKILL.md",
+    "skill/install.sh"
   ],
   "os": [
     "darwin"

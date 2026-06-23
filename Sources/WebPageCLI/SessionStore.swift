@@ -52,9 +52,17 @@ struct WBConfig: Sendable {
 		)
 	}
 
+	static func currentProjectDirectory() -> URL {
+		let baseURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
+		return projectDirectory(startingAt: baseURL)
+	}
+
+	static func projectDirectory(startingAt baseURL: URL) -> URL {
+		gitRoot(startingAt: baseURL) ?? baseURL.standardizedFileURL
+	}
+
 	private static func defaultDirectory(baseURL: URL) -> URL {
-		let rootURL = gitRoot(startingAt: baseURL) ?? baseURL
-		return rootURL.appendingPathComponent(".wb", isDirectory: true)
+		projectDirectory(startingAt: baseURL).appendingPathComponent(".wb", isDirectory: true)
 	}
 
 	private static func gitRoot(startingAt baseURL: URL) -> URL? {

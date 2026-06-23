@@ -41,6 +41,7 @@ struct DaemonLaunch {
 
 enum LocalCommand {
 	case environment
+	case installSkill(SkillInstallOptions)
 	case update
 	case version
 }
@@ -63,6 +64,7 @@ enum RenderMode {
 enum HelpTopic {
 	case root
 	case environment
+	case installSkill
 	case update
 	case version
 	case create
@@ -132,6 +134,13 @@ struct CLIParser {
 				throw WBError.message("unexpected env argument \(arguments[0])")
 			}
 			return CLIInvocation(localCommand: .environment, renderMode: .silent)
+
+		case "install-skill":
+			if arguments.containsHelpFlag {
+				return help(.installSkill)
+			}
+			let options = try parseSkillInstallOptions(arguments)
+			return CLIInvocation(localCommand: .installSkill(options), renderMode: .silent)
 
 		case "update":
 			if arguments.containsHelpFlag {
@@ -412,9 +421,10 @@ struct CLIParser {
 				return help(.type)
 			}
 			var arguments = arguments
-			let typingOptions = try parseTypingDelayOptions(&arguments)
+			let typingOptions = try parseTypingOptions(&arguments)
 			let usage =
-				"usage: wb type <id> <action> <text> [--delay-min <seconds>] [--delay-max <seconds>]"
+				"usage: wb type <id> <action> <text> [--backend js|native] "
+				+ "[--rhythm flat|natural] [--delay-min <seconds>] [--delay-max <seconds>]"
 			let id = try popBrowserID(
 				from: &arguments,
 				usage: usage
@@ -426,7 +436,9 @@ struct CLIParser {
 					.withBrowser(id)
 					.withAction(action)
 					.withValue(value)
-					.withTypingDelays(min: typingOptions.min, max: typingOptions.max),
+					.withTypingDelays(min: typingOptions.min, max: typingOptions.max)
+					.withTypingBackend(typingOptions.backend)
+					.withTypingRhythm(typingOptions.rhythm),
 				renderMode: .interaction,
 				daemon: .enabled
 			)
@@ -550,6 +562,8 @@ struct CLIParser {
 		switch command {
 		case "env", "environment":
 			return help(.environment)
+		case "install-skill":
+			return help(.installSkill)
 		case "update":
 			return help(.update)
 		case "version":
@@ -894,66 +908,6 @@ private func parseScreenshotCaptureDelayOption(_ arguments: inout [String]) thro
 
 	arguments = remaining
 	return delay
-}
-
-private struct TypingDelayOptions {
-	var min: TimeInterval?
-	var max: TimeInterval?
-}
-
-private func parseTypingDelayOptions(_ arguments: inout [String]) throws -> TypingDelayOptions {
-	var options = TypingDelayOptions()
-	var remaining: [String] = []
-
-	while !arguments.isEmpty {
-		let argument = arguments.removeFirst()
-		let rawDelay: String?
-
-		switch argument {
-		case "--delay-min", "--min-delay", "--typing-delay-min":
-			rawDelay = try arguments.popFirst("missing value after \(argument)")
-			options.min = try TypingDelay.parse(rawDelay ?? "")
-
-		case let option where option.hasPrefix("--delay-min="):
-			rawDelay = String(option.dropFirst("--delay-min=".count))
-			options.min = try TypingDelay.parse(rawDelay ?? "")
-
-		case let option where option.hasPrefix("--min-delay="):
-			rawDelay = String(option.dropFirst("--min-delay=".count))
-			options.min = try TypingDelay.parse(rawDelay ?? "")
-
-		case let option where option.hasPrefix("--typing-delay-min="):
-			rawDelay = String(option.dropFirst("--typing-delay-min=".count))
-			options.min = try TypingDelay.parse(rawDelay ?? "")
-
-		case "--delay-max", "--max-delay", "--typing-delay-max":
-			rawDelay = try arguments.popFirst("missing value after \(argument)")
-			options.max = try TypingDelay.parse(rawDelay ?? "")
-
-		case let option where option.hasPrefix("--delay-max="):
-			rawDelay = String(option.dropFirst("--delay-max=".count))
-			options.max = try TypingDelay.parse(rawDelay ?? "")
-
-		case let option where option.hasPrefix("--max-delay="):
-			rawDelay = String(option.dropFirst("--max-delay=".count))
-			options.max = try TypingDelay.parse(rawDelay ?? "")
-
-		case let option where option.hasPrefix("--typing-delay-max="):
-			rawDelay = String(option.dropFirst("--typing-delay-max=".count))
-			options.max = try TypingDelay.parse(rawDelay ?? "")
-
-		default:
-			remaining.append(argument)
-		}
-	}
-
-	arguments = remaining
-	if options.min != nil || options.max != nil {
-		_ = try WireRequest(command: .typeText)
-			.withTypingDelays(min: options.min, max: options.max)
-			.typingDelayRange()
-	}
-	return options
 }
 
 private func parseIdleTimeoutOption(_ arguments: inout [String]) throws -> TimeInterval? {
