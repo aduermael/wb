@@ -81,6 +81,17 @@ struct CommandResult {
 
 typealias CommandRunner = (_ executablePath: String, _ arguments: [String]) throws -> CommandResult
 
+enum StreamingInputMode {
+	case inherit
+	case autoConfirm
+	case autoConfirmWhenHeadless
+}
+
+private enum CommandIOMode {
+	case captureOutput
+	case stream(inputMode: StreamingInputMode)
+}
+
 enum InstallationDetector {
 	static func detect(
 		executablePath: String,
@@ -215,27 +226,50 @@ enum InstallationDetector {
 
 enum ProcessCommand {
 	static func run(_ executablePath: String, _ arguments: [String]) throws -> CommandResult {
-		try run(executablePath, arguments, captureOutput: true)
+		try run(executablePath, arguments, mode: .captureOutput)
 	}
 
-	static func runStreaming(_ executablePath: String, _ arguments: [String]) throws {
-		_ = try run(executablePath, arguments, captureOutput: false)
+	static func runStreaming(
+		_ executablePath: String,
+		_ arguments: [String],
+		inputMode: StreamingInputMode = .inherit
+	) throws {
+		_ = try run(executablePath, arguments, mode: .stream(inputMode: inputMode))
 	}
 
 	private static func run(
 		_ executablePath: String,
 		_ arguments: [String],
-		captureOutput: Bool
+		mode: CommandIOMode
 	) throws -> CommandResult {
 		let process = Process()
 		process.executableURL = URL(fileURLWithPath: executablePath)
 		process.arguments = arguments
 
-		let outputPipe = captureOutput ? Pipe() : nil
-		let errorPipe = captureOutput ? Pipe() : nil
+		let outputPipe: Pipe?
+		let errorPipe: Pipe?
+		let inputPipe: Pipe?
+		switch mode {
+		case .captureOutput:
+			outputPipe = Pipe()
+			errorPipe = Pipe()
+			inputPipe = nil
+		case .stream(let inputMode):
+			outputPipe = nil
+			errorPipe = nil
+			inputPipe = configureStreamingInput(process, inputMode: inputMode)
+		}
+
 		if let outputPipe, let errorPipe {
 			process.standardOutput = outputPipe
 			process.standardError = errorPipe
+		} else {
+			process.standardOutput = FileHandle.standardOutput
+			process.standardError = FileHandle.standardError
+		}
+		if let inputPipe {
+			inputPipe.fileHandleForWriting.write(autoConfirmInput)
+			inputPipe.fileHandleForWriting.closeFile()
 		}
 
 		do {
@@ -256,6 +290,35 @@ enum ProcessCommand {
 			throw WBError.message(commandFailureMessage(executablePath, arguments, result: result))
 		}
 		return result
+	}
+
+	private static func configureStreamingInput(
+		_ process: Process,
+		inputMode: StreamingInputMode
+	) -> Pipe? {
+		guard shouldAutoConfirm(inputMode: inputMode) else {
+			process.standardInput = FileHandle.standardInput
+			return nil
+		}
+
+		let inputPipe = Pipe()
+		process.standardInput = inputPipe
+		return inputPipe
+	}
+
+	private static func shouldAutoConfirm(inputMode: StreamingInputMode) -> Bool {
+		switch inputMode {
+		case .inherit:
+			return false
+		case .autoConfirm:
+			return true
+		case .autoConfirmWhenHeadless:
+			return Darwin.isatty(STDIN_FILENO) != 1
+		}
+	}
+
+	private static var autoConfirmInput: Data {
+		Data(String(repeating: "y\n", count: 32).utf8)
 	}
 
 	private static func readPipe(_ pipe: Pipe) -> String {
@@ -376,14 +439,17 @@ enum WBUpdater {
 
 	private static func updateWithHomebrew(brewPath: String) throws {
 		print("Updating wb with Homebrew...")
-		try ProcessCommand.runStreaming(brewPath, ["update"])
-		try ProcessCommand.runStreaming(brewPath, ["upgrade", "wb"])
+		try ProcessCommand.runStreaming(brewPath, ["update"], inputMode: .autoConfirmWhenHeadless)
+		try ProcessCommand.runStreaming(
+			brewPath, ["upgrade", "wb"], inputMode: .autoConfirmWhenHeadless)
 		print("Homebrew update completed.")
 	}
 
 	private static func updateWithNPM(npmPath: String, packageName: String) throws {
 		print("Updating wb with npm...")
-		try ProcessCommand.runStreaming(npmPath, ["install", "-g", "\(packageName)@latest"])
+		try ProcessCommand.runStreaming(
+			npmPath, ["install", "-g", "\(packageName)@latest"],
+			inputMode: .autoConfirmWhenHeadless)
 		print("npm update completed.")
 	}
 

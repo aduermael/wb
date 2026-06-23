@@ -126,6 +126,9 @@ TestHarness.run("UpdaterTests.testInstallationDetectorIdentifiesNPMExecutable") 
 TestHarness.run("UpdaterTests.testInstallationDetectorAllowsNPMOverride") {
 	try updaterTests.testInstallationDetectorAllowsNPMOverride()
 }
+TestHarness.run("UpdaterTests.testStreamingCommandsCanAutoConfirmPrompts") {
+	try updaterTests.testStreamingCommandsCanAutoConfirmPrompts()
+}
 
 let sessionStoreTests = SessionStoreTests()
 TestHarness.run("SessionStoreTests.testIdleTimeoutParsing") {

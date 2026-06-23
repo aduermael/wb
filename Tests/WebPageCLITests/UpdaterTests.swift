@@ -204,4 +204,25 @@ struct UpdaterTests {
 			XCTAssertEqual(packageName, "@aduermael_/wb")
 		}
 	}
+
+	func testStreamingCommandsCanAutoConfirmPrompts() throws {
+		try withTemporaryDirectory { directory in
+			let script = directory.appendingPathComponent("prompt.sh")
+			let answerPath = directory.appendingPathComponent("answer.txt")
+			try Data(
+				"""
+				#!/bin/sh
+				IFS= read -r answer
+				printf '%s\\n' "$answer" > "$1"
+				test "$answer" = y
+				""".utf8
+			)
+			.write(to: script)
+			try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: script.path)
+
+			try ProcessCommand.runStreaming(script.path, [answerPath.path], inputMode: .autoConfirm)
+
+			XCTAssertEqual(try String(contentsOf: answerPath), "y\n")
+		}
+	}
 }
