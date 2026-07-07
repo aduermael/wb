@@ -205,15 +205,17 @@ Navigation errors are emitted as JSON responses with `ok:false` and a nonzero ex
 
 Use `wb page --help` to see filterable fields. Use `wb page <id> --fields title,url,resourceCount,resources,htmlBytes,jsonBytes` to print selected top-level fields.
 
+Use `--resource-mode lean` on `wb create`, `wb <url>`, or `wb <id> <url>` for faster headless page loads that avoid images, media, and fonts. Set `WB_RESOURCE_MODE=lean` to make that the default for new browsers. `wb show <id>` promotes lean browsers to full mode before user handoff so the preview window loads normal visual resources.
+
 ## ⌨️ Commands
 
-- `wb create`: create an empty browser and print its ID. Use this only when you need an ID before you know the URL; otherwise `wb <url>` creates and loads a new browser in one command.
-- `wb env`: print public metadata for the current `.wb` environment.
+- `wb create [--resource-mode lean|full]`: create an empty browser and print its ID. Use this only when you need an ID before you know the URL; otherwise `wb <url>` creates and loads a new browser in one command.
+- `wb env`: print public metadata for the current browser environment.
 - `wb install-skill [--codex] [--claude] [--grok] [--all]`: install the embedded agent skill.
 - `wb update`: update the CLI to the latest release.
 - `wb version`: print the CLI version.
-- `wb <url> [--wait-resources] [--resource-timeout <seconds>]`: create a browser, load the page, and print a compact summary. By default this returns after page HTML readiness. Use resource flags only when the initial response must wait for scripts, styles, images, and fetches; `--resource-timeout` implies `--wait-resources`; max 100 seconds.
-- `wb <id> <url> [--wait-resources] [--resource-timeout <seconds>]`: load a page in an existing browser. By default this returns after page HTML readiness. Use resource flags only when the initial response must wait for scripts, styles, images, and fetches; `--resource-timeout` implies `--wait-resources`; max 100 seconds.
+- `wb <url> [--wait-resources] [--resource-timeout <seconds>] [--resource-mode lean|full]`: create a browser, load the page, and print a compact summary. By default this returns after page HTML readiness. Use resource flags only when the initial response must wait for scripts, styles, images, and fetches; `--resource-timeout` implies `--wait-resources`; max 100 seconds.
+- `wb <id> <url> [--wait-resources] [--resource-timeout <seconds>] [--resource-mode lean|full]`: load a page in an existing browser. By default this returns after page HTML readiness. Use resource flags only when the initial response must wait for scripts, styles, images, and fetches; `--resource-timeout` implies `--wait-resources`; max 100 seconds.
 - `wb list [--quiet|-q]`: print active and saved browser summaries as compact JSON, or only browser IDs with `--quiet`/`-q`.
 - `wb remove <id> [<id> ...]`: remove active browsers and delete any saved sessions for those IDs.
 - `wb remove --all`: remove every active and saved browser.
@@ -229,7 +231,7 @@ Use `wb page --help` to see filterable fields. Use `wb page <id> --fields title,
 - `wb drag <id> <x> <y>`: send a page mouse-drag event to a viewport coordinate after `press`.
 - `wb release <id> <x> <y>`: send a page mouse-up event at a viewport coordinate.
 - `wb scroll <id> <x> <y> <deltaX> <deltaY>`: scroll at a viewport coordinate without opening a window.
-- `wb type <id> <action> <text> [--backend js|native] [--rhythm flat|natural] [--speed <factor>] [--delay-min <seconds>] [--delay-max <seconds>]`: focus a text input, textarea, or contenteditable element, then enter text with short randomized key delays. The default `native` backend sends AppKit key events to the browser's persistent WebView attachment, the default `natural` rhythm adds short word and punctuation pauses, and the default `--speed 2.0` types twice as fast as the base delays. Use `--speed 1.0` for the previous speed, and use `--backend js` or `--rhythm flat` only as fallbacks.
+- `wb type <id> <action> <text> [--backend js|native] [--rhythm flat|natural] [--speed <factor>] [--delay-min <seconds>] [--delay-max <seconds>]`: focus a text input, textarea, or contenteditable element, then enter text with short randomized key delays. The default `native` backend sends AppKit key events to the browser's persistent WebView attachment, the default `natural` rhythm adds short word and punctuation pauses, and the default `--speed 4.0` types four times as fast as the base delays. Use `--speed 1.0` for the base delay speed, and use `--backend js` or `--rhythm flat` only as fallbacks.
 - `wb fill <id> <action> <text>`: directly set the value of an input, textarea, select, or contenteditable element and print a compact summary.
 - `wb submit <id> <action>`: submit the nearest form for an action and print a compact summary.
 - `wb eval <id> [--body] <javascript>`: evaluate a JavaScript expression, or run a raw JavaScript function body with `--body`, and print the result.

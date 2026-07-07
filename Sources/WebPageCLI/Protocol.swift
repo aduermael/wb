@@ -4,7 +4,7 @@
 import Foundation
 
 enum WireProtocol {
-	static let version = 41
+	static let version = 42
 }
 
 enum DaemonTiming {
@@ -108,7 +108,7 @@ enum TypingDelay {
 }
 
 enum TypingSpeed {
-	static let defaultFactor: Double = 2.0
+	static let defaultFactor: Double = 4.0
 
 	static func parse(_ rawValue: String) throws -> Double {
 		guard let factor = Double(rawValue) else {
@@ -211,6 +211,7 @@ struct WireRequest: Codable, Sendable {
 	var browser: String? = nil
 	var browsers: [String]? = nil
 	var allBrowsers: Bool? = nil
+	var resourceMode: BrowserResourceMode? = nil
 	var url: String? = nil
 	var script: String? = nil
 	var functionBody: Bool? = nil
@@ -259,6 +260,12 @@ struct WireRequest: Codable, Sendable {
 	func withURL(_ url: String?) -> WireRequest {
 		var request = self
 		request.url = url
+		return request
+	}
+
+	func withResourceMode(_ mode: BrowserResourceMode?) -> WireRequest {
+		var request = self
+		request.resourceMode = mode
 		return request
 	}
 
@@ -472,7 +479,21 @@ struct WireRequest: Codable, Sendable {
 		}
 	}
 
+	func resourceMode(default defaultMode: BrowserResourceMode) -> BrowserResourceMode {
+		resourceMode ?? defaultMode
+	}
+
 	func validateResourceLoading() throws {
+		if resourceMode != nil {
+			switch command {
+			case .browserCreate,
+				.open:
+				break
+			default:
+				throw WBError.message("resource mode is only supported for create and open commands")
+			}
+		}
+
 		let requestsResourceLoading = waitForResources == true || resourceTimeout != nil
 		if requestsResourceLoading {
 			switch command {
@@ -650,6 +671,7 @@ struct WireResponse: Codable, Sendable {
 
 struct BrowserSummary: Codable, Sendable {
 	let browser: String
+	let resourceMode: BrowserResourceMode?
 	let title: String?
 	let url: String?
 	let loading: Bool

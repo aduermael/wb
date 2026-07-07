@@ -23,6 +23,10 @@ struct CLIParserTests {
 			return XCTFail("expected browser id rendering")
 		}
 
+		let leanCreate = try CLIParser.parse(["create", "--resource-mode", "lean"])
+		XCTAssertEqual(leanCreate.request?.command, .browserCreate)
+		XCTAssertEqual(leanCreate.request?.resourceMode, .lean)
+
 		let list = try CLIParser.parse(["list"])
 		XCTAssertEqual(list.request?.command, .browserList)
 		guard case .browsers = list.renderMode else {
@@ -126,6 +130,14 @@ struct CLIParserTests {
 		XCTAssertEqual(existingBrowser.request?.browser, "deadbeef")
 		XCTAssertEqual(existingBrowser.request?.url, "https://example.com")
 
+		let leanBrowser = try CLIParser.parse([
+			"--resource-mode=lean",
+			"deadbeef",
+			"https://example.com",
+		])
+		XCTAssertEqual(leanBrowser.request?.browser, "deadbeef")
+		XCTAssertEqual(leanBrowser.request?.resourceMode, .lean)
+
 		let waitForResources = try CLIParser.parse([
 			"--wait-resources",
 			"deadbeef",
@@ -175,6 +187,10 @@ struct CLIParserTests {
 		assertThrowsMessage(
 			try CLIParser.parse(["example.com", "--resource-timeout", "-1"]),
 			"invalid resource timeout -1"
+		)
+		assertThrowsMessage(
+			try CLIParser.parse(["example.com", "--resource-mode", "tiny"]),
+			"unknown resource mode tiny"
 		)
 		assertThrowsMessage(
 			try CLIParser.parse([

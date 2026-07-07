@@ -13,6 +13,7 @@ description: Use the installed wb CLI for persistent browser automation with com
   Use `wb create` only for an empty browser before a URL is known.
 - Prefer fast commands. URL opens return after page HTML readiness while resources may keep loading.
 - Do not add `--resource-timeout` to initial navigation as a precaution.
+- Use `--resource-mode lean` for headless research when page images, media, and fonts are not needed.
 - Use `wb wait-resources <id>` when loaded resources matter after navigation.
 - Use `wb page <id> --resource-timeout <seconds>` when page JSON should wait.
 - After navigation, interaction, scroll, or rerender, refresh with `wb page <id>` before reusing actions.
@@ -40,6 +41,7 @@ wb "$id" https://example.com
 ## Command Map
 
 - Start/load: `wb <url>` (new browser), `wb <id> <url>` (existing browser), `wb create` (empty browser only)
+- Resource mode: add `--resource-mode lean` for faster headless loads, `--resource-mode full` for normal loads.
 - Wait: `wb wait-resources <id> [--resource-timeout <seconds>]`
 - Inspect: `wb list [--quiet|-q]`, `wb page <id> [--fields ...]`
   `[--selectors|--action-details] [--resource-timeout ...]`
@@ -54,7 +56,7 @@ wb "$id" https://example.com
 - Always try `wb type` first for inputs, textareas, and contenteditable fields.
 - Defaults are native backend plus natural rhythm. Do not add flags unless you need a fallback or comparison.
 - Native/natural sends AppKit key events through the persistent browser with short word and punctuation pauses.
-- Default typing speed is `--speed 2.0`; use `--speed 1.0` for the base delay speed.
+- Default typing speed is `--speed 4.0`; use `--speed 1.0` for the base delay speed.
 - Use `--backend js` only when native typing is unavailable.
 - Use `--rhythm flat` only when deterministic timing matters.
 - Use `fill` for deliberate direct assignment, simple controls such as selects, or fallback.
@@ -104,6 +106,7 @@ wb scroll "$id" 640 780 0 700
 ## Live Preview
 
 - Use `wb show <id>` for user handoff, credentials, MFA, CAPTCHA, passkeys, SSO, or visual debugging.
+- Showing a lean browser promotes it to full resource mode before display.
 - Continue with the same browser ID after handoff, then run `wb page <id>` before acting again.
 - Use `wb hide <id>` when the visible window is no longer useful; it keeps session state.
 

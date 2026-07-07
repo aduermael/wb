@@ -12,11 +12,12 @@ func printHelp(_ topic: HelpTopic) {
 
 			Usage:
 			  wb [<id>] <url> [--wait-resources] [--resource-timeout <seconds>]
+			    [--resource-mode lean|full]
 			  wb env
 			  wb install-skill [--codex] [--claude] [--grok] [--all]
 			  wb update
 			  wb version
-			  wb create
+			  wb create [--resource-mode lean|full]
 			  wb list [--quiet|-q]
 			  wb remove <id> [<id> ...]
 			  wb remove --all
@@ -52,6 +53,7 @@ func printHelp(_ topic: HelpTopic) {
 			  - JSON output is compact; fields with default values are omitted.
 			  - URL opens return after page HTML is ready. Use wait-resources after
 			    navigation when scripts, styles, images, and fetches matter.
+			  - --resource-mode lean avoids images, media, and fonts for faster headless use.
 			  - --resource-timeout accepts 0-\(Int(ResourceLoading.maxTimeout)) seconds.
 			  - Run 'wb <command> --help' for command details.
 			""")
@@ -64,9 +66,9 @@ func printHelp(_ topic: HelpTopic) {
 
 			Prints public metadata for the current wb environment.
 
-			By default, wb uses .wb next to the nearest parent .git directory.
-			Outside a git checkout, it uses .wb under the current directory.
+			By default, wb uses a per-project directory under /tmp.
 			Set WB_DIR to override the environment directory.
+			Set WB_RESOURCE_MODE=lean to make new browsers use lean resource loading by default.
 			""")
 
 	case .installSkill:
@@ -120,13 +122,17 @@ func printHelp(_ topic: HelpTopic) {
 		print(
 			"""
 			Usage:
-			  wb create
+			  wb create [--resource-mode lean|full]
 
 			Creates an empty browser and prints its ID.
 
 			If you already know the URL, use wb <url> instead. It creates a
 			new browser, loads the page, and returns the browser ID in the JSON
 			summary, so wb create followed by wb <id> <url> is unnecessary.
+
+			Options:
+			  --resource-mode <lean|full>    Resource loading mode for the new browser.
+			                                 lean avoids images, media, and fonts.
 			""")
 
 	case .list:
@@ -161,6 +167,7 @@ func printHelp(_ topic: HelpTopic) {
 			  wb show <id>
 
 			Shows a lightweight browser window for the browser.
+			If the browser was using lean resource mode, show reloads it in full mode first.
 			""")
 
 	case .hide:
