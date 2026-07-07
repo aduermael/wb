@@ -10,6 +10,7 @@ import WebKit
 @MainActor
 final class BrowserInstance {
 	let id: String
+	let resourceMode: BrowserResourceMode
 
 	let page: WebPage
 	private var actions: [BrowserAction] = []
@@ -24,8 +25,13 @@ final class BrowserInstance {
 	private let createdAt: Date
 	private var updatedAt: Date
 
-	init(identity: BrowserInstanceIdentity, websiteDataStore: WKWebsiteDataStore) {
+	init(
+		identity: BrowserInstanceIdentity,
+		websiteDataStore: WKWebsiteDataStore,
+		resourceConfiguration: BrowserResourceConfiguration
+	) {
 		id = identity.id
+		resourceMode = resourceConfiguration.mode
 		var configuration = WebPage.Configuration()
 		configuration.websiteDataStore = websiteDataStore
 		let userContentController = WKUserContentController()
@@ -36,6 +42,7 @@ final class BrowserInstance {
 				forMainFrameOnly: false
 			))
 		configuration.userContentController = userContentController
+		configuration = resourceConfiguration.policy.apply(to: configuration, mode: resourceMode)
 		page = WebPage(configuration: configuration)
 		createdAt = identity.createdAt
 		updatedAt = identity.updatedAt
@@ -384,6 +391,7 @@ final class BrowserInstance {
 	func summary() -> BrowserSummary {
 		BrowserSummary(
 			browser: id,
+			resourceMode: resourceMode,
 			title: page.title.nilIfEmpty,
 			url: page.url?.absoluteString,
 			loading: page.isLoading,
@@ -413,6 +421,7 @@ final class BrowserInstance {
 		let dump = BrowserDump(
 			schemaVersion: 1,
 			browser: id,
+			resourceMode: resourceMode,
 			title: page.title.nilIfEmpty,
 			url: page.url?.absoluteString,
 			loading: page.isLoading,
