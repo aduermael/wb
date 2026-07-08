@@ -28,6 +28,7 @@ struct PageFieldAndProtocolTests {
 			.withDestinationPath("/tmp/shot.png")
 			.withCoordinate("scroll", point: WirePoint(x: 1.5, y: 2), delta: WireDelta(x: -3, y: 4))
 			.withResourceLoading(waitForResources: true, timeout: 3.5)
+			.withResourceMode(.lean)
 			.withTypingDelays(min: 0.01, max: 0.02)
 			.withTypingBackend(.native)
 			.withTypingRhythm(.natural)
@@ -47,6 +48,7 @@ struct PageFieldAndProtocolTests {
 		XCTAssertEqual(try request.requiredDeltaY(), 4)
 		XCTAssertEqual(request.waitForResources, true)
 		XCTAssertEqual(try request.resourceWaitTimeout(default: 8), 3.5)
+		XCTAssertEqual(request.resourceMode(default: .full), .lean)
 		XCTAssertEqual(
 			try request.typingDelayRange(),
 			TypingDelayRange(min: 0.01, max: 0.02)
@@ -169,6 +171,12 @@ struct PageFieldAndProtocolTests {
 				.withScreenshotDelay(0.3)
 				.validateResourceLoading(),
 			"screenshot capture delay is only supported for screenshot commands"
+		)
+		assertThrowsMessage(
+			try WireRequest(command: .page)
+				.withResourceMode(.lean)
+				.validateResourceLoading(),
+			"resource mode is only supported for create and open commands"
 		)
 		assertThrowsMessage(
 			try WireRequest(command: .screenshot)

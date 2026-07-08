@@ -27,10 +27,10 @@ final class DaemonProcess {
 		)
 		daemonLog("daemon disabled automatic and sudden termination")
 
-		let manager: BrowserManager = try await MainActor.run {
+		await MainActor.run {
 			BrowserApplicationHost.prepareForDaemon()
-			return try BrowserManager(config: config)
 		}
+		let manager = try await BrowserManager(config: config)
 		await MainActor.run {
 			BrowserApplicationHost.setQuitHandler {
 				Task { @MainActor in

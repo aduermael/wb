@@ -8,6 +8,7 @@ struct WBConfig: Sendable {
 
 	let directory: URL
 	let idleTimeout: TimeInterval
+	let defaultResourceMode: BrowserResourceMode
 
 	var sessionsDirectory: URL {
 		directory.appendingPathComponent("sessions", isDirectory: true)
@@ -48,7 +49,10 @@ struct WBConfig: Sendable {
 			idleTimeout: idleTimeout
 				?? parseIdleTimeout(environment["WB_IDLE_SECONDS"])
 				?? parseIdleTimeout(environment["WP_IDLE_SECONDS"])
-				?? defaultIdleTimeout
+				?? defaultIdleTimeout,
+			defaultResourceMode: BrowserResourceMode.parseEnvironment(environment["WB_RESOURCE_MODE"])
+				?? BrowserResourceMode.parseEnvironment(environment["WP_RESOURCE_MODE"])
+				?? .default
 		)
 	}
 
@@ -62,7 +66,10 @@ struct WBConfig: Sendable {
 	}
 
 	private static func defaultDirectory(baseURL: URL) -> URL {
-		projectDirectory(startingAt: baseURL).appendingPathComponent(".wb", isDirectory: true)
+		let project = projectDirectory(startingAt: baseURL).path
+		let name = "wb-webpage-\(Darwin.getuid())-\(pathHash(project))"
+		return URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+			.appendingPathComponent(name, isDirectory: true)
 	}
 
 	private static func gitRoot(startingAt baseURL: URL) -> URL? {
@@ -353,6 +360,7 @@ struct SessionStore: Sendable {
 struct BrowserDump: Codable, Sendable {
 	let schemaVersion: Int
 	let browser: String
+	var resourceMode: BrowserResourceMode? = nil
 	let title: String?
 	let url: String?
 	let loading: Bool
@@ -371,6 +379,7 @@ struct BrowserDump: Codable, Sendable {
 
 		return BrowserSummary(
 			browser: browser,
+			resourceMode: resourceMode,
 			title: title ?? snapshotTitle,
 			url: url ?? snapshotURL,
 			loading: loading,

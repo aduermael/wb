@@ -163,11 +163,14 @@ struct CLIParser {
 			if arguments.containsHelpFlag {
 				return help(.create)
 			}
+			var arguments = arguments
+			let resourceMode = try parseResourceModeOption(&arguments)
 			guard arguments.isEmpty else {
 				throw WBError.message("unexpected create argument \(arguments[0])")
 			}
 			return CLIInvocation(
-				request: WireRequest(command: .browserCreate),
+				request: WireRequest(command: .browserCreate)
+					.withResourceMode(resourceMode),
 				renderMode: .browserID,
 				daemon: .enabled
 			)
@@ -527,6 +530,7 @@ struct CLIParser {
 
 	private static func parsePositionalOpen(first: String, rest arguments: [String]) throws -> CLIInvocation {
 		var arguments = [first] + arguments
+		let resourceMode = try parseResourceModeOption(&arguments)
 		let resourceOptions = try parseResourceLoadingOptions(&arguments)
 
 		guard let first = arguments.first else {
@@ -560,6 +564,7 @@ struct CLIParser {
 			request: WireRequest(command: .open)
 				.withBrowser(browser)
 				.withURL(url)
+				.withResourceMode(resourceMode)
 				.withResourceLoading(
 					waitForResources: resourceOptions.waitForResources,
 					timeout: resourceOptions.timeout
@@ -884,6 +889,30 @@ private func parseResourceTimeoutArgument(
 	default:
 		return nil
 	}
+}
+
+private func parseResourceModeOption(_ arguments: inout [String]) throws -> BrowserResourceMode? {
+	var resourceMode: BrowserResourceMode?
+	var remaining: [String] = []
+
+	while !arguments.isEmpty {
+		let argument = arguments.removeFirst()
+		let rawMode: String
+
+		if argument == "--resource-mode" {
+			rawMode = try arguments.popFirst("missing value after --resource-mode")
+		} else if argument.hasPrefix("--resource-mode=") {
+			rawMode = String(argument.dropFirst("--resource-mode=".count))
+		} else {
+			remaining.append(argument)
+			continue
+		}
+
+		resourceMode = try BrowserResourceMode.parse(rawMode)
+	}
+
+	arguments = remaining
+	return resourceMode
 }
 
 private func parseScreenshotCaptureDelayOption(_ arguments: inout [String]) throws -> TimeInterval? {

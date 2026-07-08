@@ -188,6 +188,7 @@ private func jsonDictionary(_ rendered: String?) throws -> [String: Any] {
 private func makeBrowserSummary(browser: String) -> BrowserSummary {
 	BrowserSummary(
 		browser: browser,
+		resourceMode: nil,
 		title: nil,
 		url: nil,
 		loading: false,

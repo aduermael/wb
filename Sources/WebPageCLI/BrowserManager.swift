@@ -11,15 +11,20 @@ final class BrowserManager: @unchecked Sendable {
 	private let environment: WBEnvironment
 	private let sessionStore: SessionStore
 	private let websiteDataStore: WKWebsiteDataStore
+	private let resourcePolicy: BrowserResourcePolicy
+	private let defaultResourceMode: BrowserResourceMode
 	private var browsers: [String: BrowserInstance] = [:]
 
-	init(config: WBConfig = .current()) throws {
+	init(config: WBConfig = .current()) async throws {
 		environment = try WBEnvironment.loadOrCreate(in: config.directory)
 		sessionStore = SessionStore(directory: config.sessionsDirectory)
 		websiteDataStore = WKWebsiteDataStore(forIdentifier: environment.uuid)
+		resourcePolicy = await BrowserResourcePolicy.make()
+		defaultResourceMode = config.defaultResourceMode
 		daemonLog(
 			"environment loaded directory=\(environment.directory.path) "
-				+ "uuid=\(environment.uuid.uuidString.lowercased())"
+				+ "uuid=\(environment.uuid.uuidString.lowercased()) "
+				+ "defaultResourceMode=\(defaultResourceMode.rawValue)"
 		)
 	}
 
@@ -50,7 +55,7 @@ final class BrowserManager: @unchecked Sendable {
 				.withMessage("ok")
 
 		case .browserCreate:
-			let browser = createBrowser()
+			let browser = createBrowser(resourceMode: request.resourceMode(default: defaultResourceMode))
 			scheduleAutosave(browser, reason: "create")
 			daemonLog("browser created id=\(browser.id)")
 			return WireResponse.success().withBrowser(browser.id)
@@ -85,7 +90,10 @@ final class BrowserManager: @unchecked Sendable {
 
 		case .open:
 			let url = try request.requiredURL()
-			let browserState = try browserForOpen(id: request.browser)
+			let browserState = try browserForOpen(
+				id: request.browser,
+				resourceMode: request.resourceMode(default: defaultResourceMode)
+			)
 			let resourceTimeout = try request.resourceWaitTimeout(default: ResourceLoading.defaultTimeout)
 			let page: PageSnapshot
 			do {
@@ -268,22 +276,27 @@ final class BrowserManager: @unchecked Sendable {
 	}
 
 	private func createBrowser(
-		id requestedID: String? = nil,
-		createdAt: Date = Date(),
-		updatedAt: Date = Date()
+		identity requestedIdentity: BrowserInstanceIdentity? = nil,
+		resourceMode: BrowserResourceMode
 	) -> BrowserInstance {
-		let id = requestedID ?? nextBrowserID()
+		let identity =
+			requestedIdentity
+			?? BrowserInstanceIdentity(
+				id: nextBrowserID(),
+				createdAt: Date(),
+				updatedAt: Date()
+			)
 
 		let browser = BrowserInstance(
-			identity: BrowserInstanceIdentity(
-				id: id,
-				createdAt: createdAt,
-				updatedAt: updatedAt
-			),
-			websiteDataStore: websiteDataStore
+			identity: identity,
+			websiteDataStore: websiteDataStore,
+			resourceConfiguration: BrowserResourceConfiguration(
+				mode: resourceMode,
+				policy: resourcePolicy
+			)
 		)
-		browsers[id] = browser
-		daemonLog("browser instance registered id=\(id)")
+		browsers[identity.id] = browser
+		daemonLog("browser instance registered id=\(identity.id) resourceMode=\(resourceMode.rawValue)")
 		return browser
 	}
 
@@ -301,13 +314,51 @@ final class BrowserManager: @unchecked Sendable {
 		}
 	}
 
-	private func browserForOpen(id: String?) throws -> (browser: BrowserInstance, createdForOpen: Bool) {
+	private func browserForOpen(
+		id: String?,
+		resourceMode: BrowserResourceMode
+	) throws -> (browser: BrowserInstance, createdForOpen: Bool) {
 		guard let id else {
 			daemonLog("open requested without browser; creating browser")
-			return (createBrowser(), true)
+			return (createBrowser(resourceMode: resourceMode), true)
 		}
 
 		if let browser = browsers[id] {
+			if browser.resourceMode != resourceMode {
+				let dump = BrowserDump(
+					schemaVersion: 1,
+					browser: browser.id,
+					resourceMode: resourceMode,
+					title: browser.page.title.nilIfEmpty,
+					url: browser.page.url?.absoluteString,
+					loading: browser.page.isLoading,
+					progress: browser.page.estimatedProgress,
+					actions: 0,
+					createdAt: Date().iso8601String,
+					updatedAt: Date().iso8601String,
+					dumpedAt: Date().iso8601String,
+					snapshot: nil,
+					windowWidth: browser.previewWindowSize.width,
+					windowHeight: browser.previewWindowSize.height
+				)
+				browser.close()
+				if let active = browsers[id], active === browser {
+					browsers.removeValue(forKey: id)
+				}
+				let replacement = createBrowser(
+					identity: BrowserInstanceIdentity(
+						id: dump.browser,
+						createdAt: dump.createdDate,
+						updatedAt: dump.updatedDate
+					),
+					resourceMode: resourceMode
+				)
+				if let windowSize = dump.windowSize {
+					replacement.resizeWindow(to: windowSize)
+				}
+				daemonLog("open replaced active browser id=\(id) resourceMode=\(resourceMode.rawValue)")
+				return (replacement, false)
+			}
 			daemonLog("open using active browser id=\(id)")
 			return (browser, false)
 		}
@@ -319,9 +370,12 @@ final class BrowserManager: @unchecked Sendable {
 		let dump = try sessionStore.load(id)
 		daemonLog("open using dumped browser id=\(id)")
 		let browser = createBrowser(
-			id: dump.browser,
-			createdAt: dump.createdDate,
-			updatedAt: dump.updatedDate
+			identity: BrowserInstanceIdentity(
+				id: dump.browser,
+				createdAt: dump.createdDate,
+				updatedAt: dump.updatedDate
+			),
+			resourceMode: resourceMode
 		)
 		return (browser, true)
 	}
@@ -347,6 +401,9 @@ final class BrowserManager: @unchecked Sendable {
 	private func showBrowser(_ id: String?) async throws -> BrowserInstance {
 		let id = try id.nilIfEmpty.unwrap("missing browser id")
 		if let browser = browsers[id] {
+			if browser.resourceMode == .lean {
+				return try await promoteForUserHandoff(browser)
+			}
 			browser.showWindow()
 			daemonLog("show active browser id=\(id)")
 			return browser
@@ -358,7 +415,7 @@ final class BrowserManager: @unchecked Sendable {
 
 		let dump = try sessionStore.load(id)
 		daemonLog("show dumped browser id=\(id)")
-		return try await resume(dump, showingWindow: true)
+		return try await resume(dump, showingWindow: true, resourceModeOverride: .full)
 	}
 
 	private func summaries() throws -> [BrowserSummary] {
@@ -480,9 +537,47 @@ final class BrowserManager: @unchecked Sendable {
 		return WBError.message("unknown browser \(id)")
 	}
 
-	private func resume(_ dump: BrowserDump, showingWindow: Bool = false) async throws -> BrowserInstance {
+	private func promoteForUserHandoff(_ browser: BrowserInstance) async throws -> BrowserInstance {
+		let dump = await browser.dump()
+		try ensureActive(browser, context: "show-promote-dump")
+		browser.close()
+		if let active = browsers[browser.id], active === browser {
+			browsers.removeValue(forKey: browser.id)
+		}
+
+		let promoted = createBrowser(
+			identity: BrowserInstanceIdentity(
+				id: dump.browser,
+				createdAt: dump.createdDate,
+				updatedAt: Date()
+			),
+			resourceMode: .full
+		)
+		if let windowSize = dump.windowSize {
+			promoted.resizeWindow(to: windowSize)
+		}
+		promoted.showWindow()
+
+		let resumeURL = dump.url ?? dump.snapshot.flatMap { $0.url }
+		if let rawURL = resumeURL.nilIfEmpty, let url = URL(string: rawURL) {
+			_ = try await promoted.open(url)
+			try ensureActive(promoted, context: "show-promote-open")
+		}
+		scheduleAutosave(promoted, reason: "show-promote")
+		daemonLog("show promoted browser id=\(promoted.id) resourceMode=full")
+		return promoted
+	}
+
+	private func resume(
+		_ dump: BrowserDump,
+		showingWindow: Bool = false,
+		resourceModeOverride: BrowserResourceMode? = nil
+	) async throws -> BrowserInstance {
 		if let browser = browsers[dump.browser] {
 			if showingWindow {
+				if browser.resourceMode == .lean {
+					return try await promoteForUserHandoff(browser)
+				}
 				browser.showWindow()
 			}
 			daemonLog("resume skipped active id=\(dump.browser) showingWindow=\(showingWindow)")
@@ -493,10 +588,14 @@ final class BrowserManager: @unchecked Sendable {
 			"resume start id=\(dump.browser) showingWindow=\(showingWindow) "
 				+ "url=\(dump.url ?? dump.snapshot?.url ?? "-")"
 		)
+		let resourceMode = resourceModeOverride ?? dump.resourceMode ?? defaultResourceMode
 		let browser = createBrowser(
-			id: dump.browser,
-			createdAt: dump.createdDate,
-			updatedAt: dump.updatedDate
+			identity: BrowserInstanceIdentity(
+				id: dump.browser,
+				createdAt: dump.createdDate,
+				updatedAt: dump.updatedDate
+			),
+			resourceMode: resourceMode
 		)
 		if let windowSize = dump.windowSize {
 			browser.resizeWindow(to: windowSize)
